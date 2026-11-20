@@ -67,6 +67,64 @@ function Tile({
   );
 }
 
+const DOES_TODAY: { to: string; title: string; text: string }[] = [
+  { to: "/vault", title: "Reads your resumes", text: "Upload any number of PDF / DOCX resumes; each is parsed into structured data." },
+  { to: "/profile", title: "Builds your profile", text: "One editable profile, filled from a resume of your choice. Your edits are never overwritten." },
+  { to: "/memory", title: "Remembers what you can do", text: "Context cards about your skills and work, plus an ideal job description for each role you want." },
+  { to: "/job-search", title: "Finds and matches jobs", text: "Planned, budgeted job searches; every job is checked against your criteria and roles, with the evidence shown." },
+];
+
+const COMING_NEXT = [
+  "Jobs from many more sources: company job boards, aggregators and careers pages",
+  "An agent that shortlists jobs the way you would, and learns from your choices",
+  "Applications prepared for you (tailored resume, form answers), sent only with your approval",
+  "A daily run that does all of this while you're away",
+];
+
+function AboutCard() {
+  return (
+    <Card className="p-6">
+      <p className="text-xs font-medium tracking-wide text-violet-600 uppercase dark:text-violet-400">About SmartIntern</p>
+      <h2 className="mt-1 font-serif text-xl text-zinc-900 dark:text-zinc-50">Your personal intern for the job hunt</h2>
+      <p className="mt-2 max-w-3xl text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
+        SmartIntern learns who you are from your resume, searches for internships and jobs that fit the roles you want, and
+        explains why each one matches or what it's missing. The goal: it finds, shortlists and applies for you, while you
+        stay in control of what gets sent.
+      </p>
+      <div className="mt-5 grid gap-6 md:grid-cols-2">
+        <div>
+          <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">What it does today</h3>
+          <ul className="mt-2 space-y-2.5">
+            {DOES_TODAY.map((d) => (
+              <li key={d.to} className="flex gap-2.5">
+                <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-500" />
+                <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                  <Link to={d.to} className="font-medium text-zinc-900 hover:text-violet-700 hover:underline dark:text-zinc-100 dark:hover:text-violet-300">
+                    {d.title}
+                  </Link>
+                  {" · "}
+                  {d.text}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div>
+          <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Where it's going</h3>
+          <ul className="mt-2 space-y-2.5">
+            {COMING_NEXT.map((t) => (
+              <li key={t} className="flex gap-2.5">
+                <ArrowRight className="mt-0.5 size-4 shrink-0 text-zinc-400" />
+                <p className="text-sm text-zinc-600 dark:text-zinc-400">{t}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 export default function Desk() {
   const { data, error, loading, reload } = useResource(api.desk, {
     pollMs: 3000,
@@ -181,6 +239,8 @@ export default function Desk() {
           }
         />
       </div>
+
+      <AboutCard />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="p-5 lg:col-span-2">
