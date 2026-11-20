@@ -393,7 +393,10 @@ agent (MCP client) ──MCP──▶ mcp-server/src/tools.py ──HTTP──�
 - **The browser only talks to the frontend server.** `frontend/src/server.ts` proxies
   `/api/*` to `BACKEND_URL` (`/api/health` → `/health`). No CORS, and the same code works
   locally (`http://localhost:8000`) and in Compose (`http://backend:8000`, set in
-  `docker-compose.yml`).
+  `docker-compose.yml`). **Exception, deployed split (2026-11-20):** frontend on Vercel
+  (`frontend/vercel.json`, static `dist/web`, build var `VITE_API_BASE_URL` = backend URL)
+  calls the backend on Render directly; the backend allows those origins via `CORS_ORIGINS`
+  (blank = no CORS). The Dockerfile binds `${PORT:-8000}` for Render.
 - **Two `.env` files, two owners.** Root `.env` = backend + frontend. `mcp-server/.env` =
   MCP only. Both gitignored, both with a committed `.example`. Compose loads the root
   `.env` if it exists (`required: false`), so `docker compose up` works without one.

@@ -45,6 +45,10 @@ import type {
   UploadResult,
 } from "./types";
 
+// Blank (local, Docker): same-origin "/api", proxied by the Node server or Vite.
+// Deployed split: VITE_API_BASE_URL = the backend's URL (e.g. https://x.onrender.com), set at build time.
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").trim().replace(/\/$/, "") || "/api";
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -86,7 +90,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   }
   let res: Response;
   try {
-    res = await fetch(`/api${path}`, init);
+    res = await fetch(`${API_BASE}${path}`, init);
   } catch {
     throw new ApiError(0, "Can't reach the server. Is it running?");
   }
@@ -116,7 +120,7 @@ export const api = {
   patchResume: (id: number, patch: ResumePatch) => request<ResumeOut>("PATCH", `/records/vault/${id}`, patch),
   reparseResume: (id: number) => request<ResumeOut>("POST", `/records/vault/${id}/reparse`),
   deleteResume: (id: number) => request<void>("DELETE", `/records/vault/${id}`),
-  resumeFileUrl: (id: number) => `/api/records/vault/${id}/file`,
+  resumeFileUrl: (id: number) => `${API_BASE}/records/vault/${id}/file`,
 
   // Records / Me
   getProfile: () => request<ProfileOut>("GET", "/records/profile"),

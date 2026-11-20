@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     # Blank -> off. Where a read-only copy of app.db is kept fresh (Compose: data_warehouse/snapshots).
     snapshot_dir: Path | None = None
     config_file: Path = ROOT / "settings" / "config.toml"
+    # Blank -> no CORS (the Node server / Vite proxy make the browser same-origin). Comma-separated
+    # origins when the frontend calls the backend directly, e.g. https://smartintern.vercel.app
+    cors_origins: str = ""
 
 
 # ── Tuning (settings/config.toml) ──────────────────────────────────────────────

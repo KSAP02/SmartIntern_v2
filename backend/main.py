@@ -4,13 +4,14 @@ import threading
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from backend.api.insight import desk
 from backend.api.records import memory, profile, vault
 from backend.api.scout import compass, search
 from backend.api.system import admin, jsearch, status
-from backend.config import ConfigWriteError, get_tuning
+from backend.config import ConfigWriteError, get_settings, get_tuning
 from backend.db import init_db
 from backend.model import ModelConfigError, UpstreamError, llm_status
 from backend.services import job_search, role_contexts, scheduler, search_settings, settings_effects
@@ -55,6 +56,10 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title=get_tuning().app.name, lifespan=lifespan)
+
+_origins = [o.strip().rstrip("/") for o in get_settings().cors_origins.split(",") if o.strip()]
+if _origins:  # deployed split (e.g. Vercel frontend -> Render backend)
+    app.add_middleware(CORSMiddleware, allow_origins=_origins, allow_methods=["*"], allow_headers=["*"])
 
 for router in (vault.router, profile.router, memory.router, search.router, compass.router, desk.router, status.router,
                admin.router, jsearch.router):
