@@ -1,0 +1,832 @@
+# SmartIntern skills vocabulary (read by backend/services/skills_vocab.py).
+# One canonical skill per line, lowercase. Optional aliases after "|".
+# An alias starting with "=" is matched case-sensitively (for words that are also
+# ordinary English, e.g. "=Swift", "=React", "=REST").
+# Spaces in a term also match hyphens ("machine learning" ~ "machine-learning").
+# Go, R and C are matched by special rules in code (ambiguous words), not here.
+# Precision over recall: leave out terms that are mostly ordinary words.
+
+# ==== Programming languages ====
+python|python3|python 3
+java|java 8|java 11|java 17|core java
+javascript|js|ecmascript|es6|es2015|vanilla js
+typescript
+c++|cpp|c plus plus
+c#|c sharp|csharp
+f#
+rust|rustlang
+kotlin
+=Swift|swift programming|swift language
+objective-c|objective c|objc
+scala
+ruby
+php
+perl
+elixir
+erlang
+haskell
+clojure
+dart
+lua
+groovy
+=Julia|julia lang
+matlab
+fortran
+cobol
+assembly language|x86 assembly|arm assembly
+solidity
+zig
+ocaml
+visual basic|vb.net|vba
+bash|bash scripting
+shell scripting|shell script|shell scripts
+powershell
+sql
+pl/sql|plsql
+t-sql|tsql
+nosql
+graphql
+html|html5
+css|css3
+sass|scss
+less css
+webassembly|wasm
+cuda
+opencl
+verilog|systemverilog
+vhdl
+labview
+salesforce apex|=Apex
+abap
+sas
+spss
+stata
+latex
+
+# ==== Frontend ====
+=React|react.js|reactjs|react js
+react native|react-native
+next.js|nextjs|next js
+vue.js|=Vue|vuejs|vue js|vue 3
+nuxt.js|nuxt|nuxtjs
+angular|angularjs|angular.js
+svelte|sveltekit
+solid.js|solidjs
+ember.js|emberjs
+backbone.js
+jquery
+redux|redux toolkit
+mobx
+zustand
+react query|tanstack query
+tailwind css|tailwind|tailwindcss
+=Bootstrap|bootstrap css|bootstrap 5
+material ui|material-ui|mui
+chakra ui
+styled components|styled-components
+webpack
+vite|vitejs
+babel
+esbuild
+storybook
+three.js|threejs
+d3.js|d3js|=D3
+chart.js
+web components
+pwa|progressive web apps|progressive web app
+responsive design|responsive web design
+web accessibility|wcag|a11y
+ajax
+web performance
+server-side rendering|ssr
+htmx
+gatsby
+electron.js|electronjs
+figma
+sketch app
+adobe xd
+framer
+
+# ==== Backend frameworks & runtimes ====
+node.js|nodejs|node js|=Node
+express.js|expressjs|express js|=Express.js
+nestjs|nest.js
+fastify
+koa
+deno
+bun runtime
+django|django rest framework|drf
+flask
+fastapi
+pyramid framework
+celery
+spring framework|spring mvc|spring security
+spring boot|springboot
+hibernate
+jpa
+maven
+gradle
+.net|dotnet|.net core|dot net
+asp.net|asp.net core|asp.net mvc
+entity framework|entity framework core
+blazor
+ruby on rails|=Rails|rails framework
+laravel
+symfony
+codeigniter
+phoenix framework
+gin framework|gin-gonic
+fiber framework
+actix
+quarkus
+micronaut
+vert.x
+play framework
+grpc
+protocol buffers|protobuf
+rest api|rest apis|restful|restful api|restful apis|=REST|restful services|rest services
+soap
+openapi|swagger
+websockets|websocket|socket.io
+webrtc
+oauth|oauth2|oauth 2.0
+openid connect|oidc
+jwt|json web tokens
+saml
+microservices|microservice architecture|micro services
+event-driven architecture|event driven architecture
+serverless
+api design
+api development
+backend development|back-end development|backend engineering
+frontend development|front-end development|frontend engineering
+full stack development|full-stack development|fullstack development|full stack|full-stack
+web development
+mobile development|mobile app development
+nginx
+apache http server|apache httpd
+tomcat
+iis
+rabbitmq
+kafka|apache kafka
+activemq
+nats
+zeromq|zmq
+apache pulsar
+redis
+memcached
+elasticsearch|elastic search
+opensearch
+solr|apache solr
+lucene
+graphql apollo|apollo graphql|apollo server|apollo client
+hasura
+prisma
+sqlalchemy
+typeorm
+sequelize
+mongoose
+drizzle orm
+pydantic
+asyncio
+multithreading|multi-threading
+concurrency
+design patterns
+mvc
+solid principles
+
+# ==== Databases & data storage ====
+postgresql|postgres|psql|postgre sql
+mysql
+mariadb
+sqlite
+oracle database|oracle db|oracle sql
+sql server|mssql|microsoft sql server|ms sql
+mongodb|mongo|mongo db
+cassandra|apache cassandra
+dynamodb|dynamo db
+couchdb
+couchbase
+neo4j
+graph databases|graph database
+cockroachdb
+firebase
+firestore
+supabase
+realtime database
+influxdb
+timescaledb
+clickhouse
+snowflake
+bigquery|google bigquery
+redshift|amazon redshift
+databricks
+delta lake
+apache iceberg|iceberg tables
+hbase
+=Hive|apache hive|hiveql
+presto
+trino
+duckdb
+data modeling|data modelling
+database design
+query optimization
+etl|elt|etl pipelines
+data pipelines|data pipeline
+data warehousing|data warehouse|data warehouses
+data lakes|data lake|data lakehouse
+data engineering
+data governance
+data quality
+data integration
+change data capture|cdc
+dbt|data build tool
+apache airflow|airflow
+dagster
+prefect
+apache spark|=Spark|spark sql
+pyspark
+hadoop|apache hadoop|hdfs
+mapreduce
+apache flink|flink
+apache beam
+kinesis|amazon kinesis
+fivetran
+informatica
+talend
+ssis
+looker
+looker studio|google data studio
+tableau
+power bi|powerbi|microsoft power bi
+qlik|qlikview|qlik sense
+metabase
+superset|apache superset
+grafana
+kibana
+microsoft excel|ms excel|=Excel|advanced excel
+google sheets
+vlookup
+pivot tables
+dax
+power query
+
+# ==== Data science, ML & AI ====
+machine learning|=ML|ml engineering|ml models
+deep learning|dl models
+artificial intelligence|=AI
+data science
+data analysis|data analytics|analyzing data|analysing data
+data visualization|data visualisation|dataviz
+statistics|statistical analysis|statistical modeling|statistical modelling
+probability
+linear algebra
+calculus
+econometrics
+time series|time series analysis|time-series forecasting|forecasting models
+predictive modeling|predictive modelling|predictive analytics
+regression analysis|regression models|linear regression|logistic regression
+classification models
+clustering
+decision trees
+random forest|random forests
+gradient boosting
+xgboost
+lightgbm
+catboost
+feature engineering
+model deployment
+model evaluation
+hyperparameter tuning
+a/b testing|ab testing|a/b tests|split testing
+causal inference
+bayesian statistics|bayesian inference|bayesian methods
+recommender systems|recommendation systems|recommendation engines
+anomaly detection
+natural language processing|nlp
+computer vision
+speech recognition|automatic speech recognition|asr
+image processing
+image classification
+object detection
+image segmentation|semantic segmentation
+optical character recognition|ocr
+reinforcement learning
+neural networks|neural network
+convolutional neural networks|cnn|cnns
+recurrent neural networks|rnn|rnns
+lstm
+transformers architecture|transformer models|transformer architecture
+attention mechanisms
+generative ai|genai|gen ai|generative artificial intelligence
+large language models|llm|llms|large language model
+retrieval-augmented generation|retrieval augmented generation|=RAG|rag pipelines|rag systems
+prompt engineering|prompt design
+llm fine-tuning|fine-tuning llms|fine-tuning language models|instruction tuning
+lora|qlora|peft
+rlhf
+embeddings|vector embeddings|text embeddings
+vector databases|vector database|vector db|vector dbs|vector store|vector stores|vector search
+semantic search
+ai agents|agentic ai|llm agents|autonomous agents|agentic workflows|ai agent
+multi-agent systems|multi-agent|multi agent systems
+function calling|tool calling
+model context protocol|=MCP
+langchain
+langgraph
+llamaindex|llama index|llama-index
+haystack
+dspy
+crewai
+autogen
+semantic kernel
+openai api|openai|gpt-4|gpt-3.5|chatgpt api
+anthropic api|claude api
+gemini api
+hugging face|huggingface|hugging face transformers
+pinecone
+weaviate
+milvus
+qdrant
+chroma|chromadb
+faiss
+pgvector
+ollama
+vllm
+llama.cpp
+mistral ai
+llm evaluation|llm evals|evals
+diffusion models|stable diffusion
+gans|generative adversarial networks
+variational autoencoders|vae
+pytorch
+tensorflow|tensorflow 2|tf2
+keras
+=JAX
+scikit-learn|sklearn|scikit learn|scikitlearn
+pandas
+numpy
+scipy
+polars
+matplotlib
+seaborn
+plotly
+dash plotly|plotly dash
+bokeh
+streamlit
+gradio
+jupyter|jupyter notebook|jupyter notebooks|jupyterlab
+google colab|colab
+opencv
+spacy
+nltk
+gensim
+onnx
+tensorrt
+openvino
+mlops
+mlflow
+kubeflow
+weights & biases|weights and biases|wandb
+dvc
+sagemaker|amazon sagemaker|aws sagemaker
+vertex ai|google vertex ai
+azure machine learning|azure ml
+amazon bedrock|aws bedrock
+azure openai
+feature stores|feature store
+data labeling|data annotation
+model edge ai|tinyml
+r studio|rstudio
+tidyverse
+ggplot2
+dplyr
+r shiny|rshiny
+
+# ==== Cloud ====
+amazon web services|aws
+microsoft azure|azure
+google cloud platform|gcp|google cloud
+oracle cloud|oci
+ibm cloud
+alibaba cloud
+digitalocean
+heroku
+vercel
+netlify
+cloudflare
+aws lambda|lambda functions
+ec2|amazon ec2|aws ec2
+=S3|amazon s3|aws s3
+amazon rds|aws rds
+amazon ecs|aws ecs
+amazon eks|aws eks
+aws fargate|fargate
+aws cloudformation|cloudformation
+aws cdk
+amazon sqs|aws sqs
+amazon sns|aws sns
+api gateway|aws api gateway
+cloudwatch|aws cloudwatch
+aws iam|iam
+aws glue
+amazon athena|aws athena
+aws step functions|step functions
+azure functions
+azure devops
+azure data factory
+azure synapse
+azure kubernetes service|aks
+cosmos db|azure cosmos db
+google kubernetes engine|gke
+cloud run|google cloud run
+cloud functions|google cloud functions
+pub/sub|google pub/sub
+dataflow|google dataflow
+dataproc
+cloud computing
+cloud architecture
+multi-cloud
+hybrid cloud
+cloud security
+cloud native|cloud-native
+cdn
+
+# ==== DevOps, infrastructure & tooling ====
+docker|dockerfile|docker compose|docker-compose
+kubernetes|k8s
+=Helm|helm charts
+openshift
+podman
+terraform
+pulumi
+ansible
+=Puppet|puppet enterprise
+chef infra
+saltstack
+vagrant
+hashicorp packer
+ci/cd|cicd|ci cd|continuous integration|continuous delivery|continuous deployment
+jenkins
+github actions
+gitlab ci|gitlab ci/cd
+circleci
+travis ci
+argo cd|argocd
+argo workflows
+flux cd|fluxcd
+spinnaker
+teamcity
+bamboo
+git
+github
+gitlab
+bitbucket
+version control
+svn|subversion
+linux|gnu/linux
+unix
+ubuntu
+centos
+red hat enterprise linux|rhel
+debian
+windows server
+macos
+devops
+devsecops
+gitops
+site reliability engineering|sre
+infrastructure as code|iac
+observability
+monitoring
+prometheus
+datadog
+new relic
+splunk
+elk stack|elk
+logstash
+jaeger
+opentelemetry
+sentry
+pagerduty
+nagios
+zabbix
+load balancing|load balancers|load balancer
+computer networking|network engineering
+tcp/ip
+dns
+http/https
+vpn
+firewalls
+istio
+envoy
+service mesh
+consul
+hashicorp vault
+linux administration|linux system administration|system administration|sysadmin
+virtualization
+vmware
+hyper-v
+kvm
+high availability
+disaster recovery
+performance tuning|performance optimization
+caching
+distributed systems
+system design
+software architecture
+cloud infrastructure
+incident management
+release management
+configuration management
+build systems
+bazel
+cmake
+makefiles|makefile
+npm
+yarn
+pnpm
+pip
+conda|anaconda
+uv package manager
+
+# ==== Testing & quality ====
+unit testing|unit tests
+integration testing|integration tests
+end-to-end testing|e2e testing|end to end testing|e2e tests
+test automation|automation testing|automated testing
+manual testing
+regression testing
+performance testing|load testing
+api testing
+test-driven development|tdd
+behavior-driven development|behaviour-driven development|bdd
+quality assurance|qa
+selenium|selenium webdriver
+cypress
+playwright
+puppeteer
+jest
+mocha
+jasmine framework|jasmine js
+karma test runner|karma js
+vitest
+testing library|react testing library
+pytest
+unittest
+junit|junit5
+testng
+mockito
+rspec
+=Cucumber|cucumber bdd
+appium
+jmeter|apache jmeter
+gatling
+k6
+postman
+soapui
+sonarqube
+code review|code reviews
+debugging
+static analysis
+linting|eslint
+
+# ==== Mobile ====
+android|android development|android sdk
+ios|ios development
+flutter
+swiftui
+uikit
+jetpack compose
+android studio
+xcode
+ionic
+xamarin
+.net maui|maui
+cordova
+mobile ui
+app store optimization|aso
+push notifications
+
+# ==== Security ====
+cybersecurity|cyber security|information security|infosec
+application security|appsec
+network security
+penetration testing|pen testing|pentesting
+ethical hacking
+vulnerability assessment|vulnerability management
+owasp|owasp top 10
+security operations|secops|soc
+siem
+threat modeling|threat modelling
+incident response
+identity and access management
+zero trust
+cryptography|encryption
+burp suite
+metasploit
+wireshark
+nmap
+kali linux
+iso 27001
+soc 2|soc2
+gdpr
+hipaa
+pci dss|pci-dss
+compliance
+
+# ==== Embedded, hardware & engineering ====
+embedded systems|embedded software|embedded c
+firmware|firmware development
+rtos|real-time operating systems|freertos
+microcontrollers|microcontroller
+arduino
+raspberry pi
+stm32
+arm cortex
+iot|internet of things
+plc|plc programming
+scada
+fpga
+asic
+pcb design
+altium|altium designer
+kicad
+circuit design
+digital electronics
+analog electronics
+signal processing|digital signal processing|dsp
+control systems
+robotics
+ros|robot operating system|ros2
+simulink
+autocad
+solidworks
+catia
+ansys
+creo
+fusion 360
+cad|computer-aided design
+finite element analysis|fea
+cfd|computational fluid dynamics
+3d printing|additive manufacturing
+lean manufacturing
+six sigma|lean six sigma
+gd&t
+
+# ==== Game, graphics & XR ====
+=Unity|unity3d|unity engine|unity 3d
+unreal engine|ue5|ue4
+godot
+game development
+opengl
+vulkan
+directx
+webgl
+blender
+3d modeling|3d modelling
+augmented reality|ar/vr|ar vr
+virtual reality|vr
+computer graphics
+shaders|shader programming|hlsl|glsl
+
+# ==== Blockchain ====
+blockchain
+web3|web3.js
+ethereum
+smart contracts|smart contract
+hardhat
+truffle
+ethers.js
+defi
+nfts|nft
+
+# ==== CS fundamentals & practices ====
+data structures|data structures and algorithms|dsa
+algorithms
+object-oriented programming|oop|object oriented programming|object oriented design|ood
+functional programming
+competitive programming
+operating systems
+computer architecture
+compiler design|compilers
+dbms|database management systems
+computer networks
+low-level design|lld
+high-level design|hld
+clean code
+refactoring
+technical documentation|technical writing
+open source|open-source contributions|open source contributions
+agile|agile methodologies|agile methodology|agile development
+scrum
+kanban
+safe agile|scaled agile
+waterfall
+jira
+confluence
+trello
+asana
+linear app
+software development life cycle|sdlc
+pair programming
+api integration|third-party integrations
+web scraping|web crawling
+beautifulsoup|beautiful soup|bs4
+scrapy
+regex|regular expressions
+json
+xml
+yaml
+csv
+parquet
+avro
+localization|internationalization|i18n|l10n
+seo|search engine optimization|search engine optimisation
+web analytics
+
+# ==== Product, design & business ====
+product management
+project management
+program management
+product strategy
+product analytics
+product design
+ui design|user interface design
+ux design|user experience design|ux research|ui/ux|ui ux|ux/ui
+user research
+usability testing
+wireframing|wireframes
+prototyping
+design thinking
+design systems|design system
+interaction design
+visual design
+graphic design
+motion design|motion graphics
+adobe creative suite|adobe creative cloud
+adobe photoshop|photoshop
+adobe illustrator|illustrator
+adobe after effects|after effects
+adobe premiere pro|premiere pro
+indesign|adobe indesign
+canva
+video editing
+copywriting
+content writing
+content marketing
+content strategy
+technical content writing
+social media marketing|social media management
+digital marketing
+performance marketing
+email marketing
+growth marketing|growth hacking
+sem|search engine marketing
+ppc|pay per click
+google ads|google adwords
+facebook ads|meta ads
+google analytics|ga4
+google tag manager
+hubspot
+salesforce|salesforce crm
+zoho crm
+crm
+marketing automation
+market research
+competitive analysis
+business analysis|business analytics
+business intelligence|bi
+requirements gathering
+stakeholder management
+financial modeling|financial modelling
+financial analysis
+accounting
+bookkeeping
+tally erp|tally prime|=Tally
+quickbooks
+=SAP|sap erp|sap s/4hana|sap fico
+erp
+supply chain management|supply chain
+procurement
+operations management
+customer success
+customer support
+b2b sales|inside sales|sales skills
+business development
+lead generation
+negotiation
+talent acquisition|technical recruiting
+
+# ==== Soft skills (kept few on purpose) ====
+communication skills|written communication|verbal communication|communication
+teamwork
+problem solving|problem-solving
+critical thinking
+leadership skills|team leadership
+mentoring|mentorship
+time management
+analytical skills|analytical thinking
+presentation skills
+attention to detail
+english|fluent english|english proficiency

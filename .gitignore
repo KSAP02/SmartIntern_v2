@@ -1,0 +1,23 @@
+# secrets
+.env
+**/.env
+
+# python
+__pycache__/
+*.pyc
+.venv/
+*-venv/
+
+# node
+node_modules/
+dist/
+
+# bulk data
+data_warehouse/*
+!data_warehouse/.gitkeep
+
+# os / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

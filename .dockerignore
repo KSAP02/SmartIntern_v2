@@ -1,0 +1,12 @@
+.git
+.env
+**/.env
+.venv
+*-venv
+**/__pycache__
+**/node_modules
+frontend
+mcp-server
+MD_files
+data_warehouse
+experiments

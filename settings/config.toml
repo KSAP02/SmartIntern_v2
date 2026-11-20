@@ -1,0 +1,446 @@
+# ============================================================================
+#  SmartIntern: system tuning ("hyperparameters")
+# ============================================================================
+#
+#  HOW TO READ THIS FILE
+#    [section]        a group of settings
+#    # comment        explains the setting directly BELOW it
+#    key = value      the actual setting you change
+#
+#  WHAT GOES HERE
+#    Non-secret knobs: models, temperature, reasoning effort, limits,
+#    thresholds, weights. Committed to git.
+#
+#  WHAT DOES NOT GO HERE
+#    API keys and infrastructure (ports, URLs, paths). Those live in .env.
+#
+#  PRECEDENCE
+#    environment / .env   >   this file   >   defaults in code
+#
+#  APPLY CHANGES
+#    No restart needed. Edits to this file are picked up within ~30 seconds.
+#    The app's System -> Admin settings page shows and edits the same values
+#    (models, matching, sources, schedule, limits): saving there rewrites only
+#    the changed values here and keeps every comment.
+#
+#  STATUS
+#    Sections for later phases are commented out until they are built.
+#
+#  TIP
+#    For colours in VS Code, install the "Even Better TOML" extension.
+# ============================================================================
+
+
+[app]
+
+# Name shown in the UI and API docs.
+name = "SmartIntern"
+
+
+
+# ============================================================================
+#  LLM: chat / reasoning model
+#  Defaults for every LLM call. Any task section below can override them.
+# ============================================================================
+
+[llm]
+
+# Provider: "openai" (others can be added in backend/model.py).
+provider = "openai"
+
+# Model id. GPT-6 Luna: OpenAI's efficient model for focused, high-volume tasks.
+# Supports structured outputs. Called through the Responses API.
+# Alternative (older tier): "gpt-5.6-luna".
+model = "gpt-6-luna"
+
+# Creativity, 0.0 (deterministic) to 2.0.
+# GPT-6 Luna's docs don't list temperature support: the code sends it only if the model
+# accepts it, otherwise it is skipped (reasoning_effort is the main knob).
+temperature = 0.2
+
+# How hard the model thinks before answering (more = slower and costlier).
+# GPT-6 Luna: "none" | "low" | "medium" (its default) | "high" | "xhigh" | "max".
+reasoning_effort = "low"
+
+# Upper limit on the length of a single reply, in tokens.
+max_output_tokens = 4000
+
+# Give up on a single call after this many seconds.
+timeout_seconds = 60
+
+# Retries on transient errors (rate limits, timeouts).
+max_retries = 2
+
+
+# ---- Per-task overrides (anything omitted inherits from [llm]) -------------
+
+# Resume text -> structured profile (Records / Vault).
+[llm.tasks.resume_extract]
+
+# Extraction must be deterministic, never creative.
+temperature = 0.0
+
+reasoning_effort = "low"
+
+# Long resumes produce long JSON.
+max_output_tokens = 6000
+
+
+# Skills -> themed groups ("Group by theme" on the Me page).
+[llm.tasks.skill_groups]
+
+# Sorting only, never creative.
+temperature = 0.0
+
+reasoning_effort = "low"
+
+
+[llm.tasks.role_context]
+
+# Memory -> Role contexts: writes one job-description-style context per role (Phase 2.6).
+reasoning_effort = "low"
+
+
+# Phase 3: explain why a job matches, list gaps.
+# [llm.tasks.match_explain]
+# temperature = 0.2
+# reasoning_effort = "medium"
+
+# Phase 4: reorder / re-emphasise existing facts only.
+# [llm.tasks.tailor_resume]
+# temperature = 0.3
+# reasoning_effort = "medium"
+
+# Phase 4: cover letters.
+# [llm.tasks.cover_letter]
+# temperature = 0.6
+
+# Phase 6: map profile + answers onto application form fields.
+# [llm.tasks.form_fill]
+# temperature = 0.0
+# reasoning_effort = "medium"
+
+
+
+# ============================================================================
+#  EMBEDDINGS
+# ============================================================================
+
+[embedding]
+
+provider = "openai"
+
+model = "text-embedding-3-small"
+
+# Vector size. Changing model or dimensions triggers a full re-embed.
+dimensions = 1536
+
+# How many texts to embed per API call.
+batch_size = 64
+
+
+
+# ============================================================================
+#  VECTOR STORE (Milvus Lite)
+# ============================================================================
+
+[vectors]
+
+# Similarity measure: "COSINE" | "IP" | "L2".
+metric = "COSINE"
+
+# Collection holding Memory (context card) vectors.
+memory_collection = "memory_cards"
+
+# Job Search: one vector per job (title + location + start of the description).
+jobs_collection = "jobs"
+
+# Job Search: one vector per requirement chunk of a job description.
+requirements_collection = "job_requirements"
+
+
+
+# ============================================================================
+#  RECORDS: Vault (resume library)
+# ============================================================================
+
+[records.vault]
+
+# Largest resume file accepted, in megabytes.
+max_upload_mb = 10
+
+# File types accepted.
+allowed_types = ["pdf", "docx"]
+
+# Below this many characters of extracted text, treat the PDF as scanned / unreadable.
+min_text_chars = 200
+
+
+
+# ============================================================================
+#  RECORDS: My Profile
+# ============================================================================
+
+[records.profile]
+
+# Default mode of the "Fill in using resume" button: "empty_only" | "replace".
+fill_default_mode = "empty_only"
+
+# Most theme groups the Skills section is sorted into (by resume parsing and by
+# "Group by theme"). Each group becomes one memory card.
+skill_groups_max = 8
+
+
+
+# ============================================================================
+#  RECORDS: Memory (context cards)
+# ============================================================================
+
+[records.memory]
+
+# Longest allowed card text, in characters.
+max_card_chars = 1500
+
+
+
+# ============================================================================
+#  DB SNAPSHOT (read-only copy of app.db for notebooks)
+#  Only runs when SNAPSHOT_DIR is set (Compose: data_warehouse/snapshots).
+# ============================================================================
+
+[snapshot]
+
+# Wait this long after the last change before copying, so a burst of writes
+# (e.g. embedding a batch of cards) becomes one copy.
+debounce_seconds = 2.0
+
+
+
+# ============================================================================
+#  JOB SEARCH (Utility -> Job Search)
+#  criteria + preset: DEFAULTS ONLY. Job Search -> Search Settings saves your
+#    choices in the database, and those win; "Reset to defaults" comes back here.
+#  sources, schedule, limits, matching: the live values. System -> Admin settings
+#    edits them here. Empty list [] means "All".
+# ============================================================================
+
+# ---- Search criteria: what to gather (jobs with unknown values are kept) ----
+[scout.search.criteria]
+
+# Roles you want, e.g. ["Backend Engineer", "AI Engineer"]. When set, a job is relevant only if
+# its title matches one of them (see role_threshold). Empty = judge by your whole profile.
+roles = []
+
+# Automatic scans: which of the roles above to include ([] = all of them)...
+auto_roles = []
+
+# ...and how: "rotate" (one role per request, taking turns), "each" (every included role,
+# one request each), "combined" (all included roles in ONE request: "A OR B in India").
+auto_mode = "rotate"
+
+# "internship" | "full_time" | "part_time" | "contract" | "freelance"
+job_types = []
+
+# "remote" | "hybrid" | "onsite"
+workplace = []
+
+# Countries or cities, e.g. ["India", "Hyderabad"].
+locations = []
+
+# With locations set: also keep jobs whose location can't be read (e.g. a small town we
+# can't place). false = only the places above, plus remote jobs open to them.
+keep_unknown_location = false
+
+# Your years of experience (a whole number): jobs asking for more are dropped. 0 sends
+# job_requirements=no_experience to JSearch, 1-2 sends under_3_years_experience,no_experience,
+# 3+ sends nothing. Leave out for any experience.
+experience_years = 2
+
+# Ignore postings older than this many days (empty = All). Leave out for All.
+# posted_within_days = 30
+
+# How a search is worded: "plain" (AI Engineer in India) | "exact" ("AI Engineer" in India) |
+# "titles" (the role's search titles from Memory -> Role contexts as one OR group) |
+# "titles_keywords" (titles + the role's first keyword).
+query_wording = "plain"
+
+exclude_title_words = []
+
+exclude_companies = []
+
+
+# ---- Apply preset: sorts gathered jobs into "Fits" / "Other relevant" ------
+[scout.search.preset]
+
+# "paid" | "stipend" | "unpaid"
+pay = []
+
+salary_currency = "INR"
+
+# "year" | "month" | "week" | "day" | "hour"
+salary_period = "year"
+
+# Keep jobs whose value is unknown (no salary stated, etc.) in "Fits".
+include_unknown = true
+
+
+# ---- JSearch: the job source (Admin settings -> JSearch) ---------------------
+# One request = one page of up to 10 jobs. Key: JSEARCH_API_KEY in .env.
+# Full API notes: MD_files/api_references/jsearch.md
+[scout.search.sources]
+
+# Call JSearch at all (false = scans only re-process jobs already gathered).
+enabled = true
+
+# Where JSEARCH_API_KEY is from: "openwebninja" (api.openwebninja.com, header x-api-key;
+# also lets the app read your plan's usage) or "rapidapi" (jsearch.p.rapidapi.com).
+provider = "openwebninja"
+
+# Requests per month: hard cap per billing period (your plan's period when known, else the
+# calendar month). Free plan: 200.
+monthly_limit = 200
+
+# Limit requests per day: true = scans stop after daily_limit requests a day (UTC), counted from
+# today whatever was spent before; false = scans may use everything left this period (minus reserve).
+daily_limit_on = false
+
+# Requests per day (used while daily_limit_on is true).
+daily_limit = 10
+
+# Kept back from scans for tests (Admin settings -> JSearch -> Test with 1 request).
+reserve = 10
+
+# Requests per scan. 1 request = one page of up to 10 jobs.
+max_per_scan = 1
+
+# "smart" = a 2nd page only when page 1 was full and mostly new; "single" = never.
+pages_policy = "smart"
+
+# smart: page 1 must bring at least this many new jobs to earn a 2nd page.
+page2_min_new = 5
+
+# A search that finds nothing new this many runs in a row is run every 3 days (then weekly).
+backoff_after_empty = 3
+
+# Seconds before one request gives up (never retried: a retry would spend quota).
+timeout_seconds = 30
+
+# Country searched when Search criteria has no Locations (ISO code, e.g. "IN").
+api_country = "IN"
+
+# Job sites JSearch should leave out (sent as exclude_job_publishers), e.g. ["BeeBe", "Dice"].
+excluded_publishers = []
+
+# A repeat search asks only for jobs posted since it last ran, but never narrower than this.
+# "today" | "3days" | "week" | "month" | "all". ("today" windows returned 0-1 jobs.)
+min_date_posted = "week"
+
+# Send your years of experience to JSearch as job_requirements. Jobs asking for more years than
+# yours are dropped after the call either way. false = JSearch doesn't filter by experience.
+send_experience_filter = true
+
+
+# ---- Schedule ---------------------------------------------------------------
+[scout.search.schedule]
+
+# Auto-scan starts off; switch it on from Job Search -> Overview.
+autoscan = false
+
+# Time of the daily scan (HH:MM) in the timezone below.
+time = "07:00"
+
+# 24 = once a day, 12 = twice a day.
+every_hours = 24
+
+timezone = "Asia/Kolkata"
+
+# Postings older than this many days are ignored when gathering.
+recency_days = 30
+
+
+# ---- Limits & retention -----------------------------------------------------
+[scout.search.limits]
+
+# Jobs stay until YOU discard them (or the agent applies). Discarded jobs are deleted after
+# this many days; the ledger keeps them from coming back.
+keep_discarded_days = 3
+
+# A job posted (or, without a date, found) longer ago than this is labelled "expired".
+# Label only: nothing is deleted for being old.
+expire_after_days = 45
+
+# The original source record is dropped after this many days.
+raw_payload_days = 7
+
+# A repost of a job seen more than this many days ago counts as a new opening.
+repost_window_days = 60
+
+
+
+# ---- Matching (job title vs your roles; job text vs the role's context) -------
+[scout.search.matching]
+
+# "COSINE" | "IP" | "L2". Same ranking for OpenAI embeddings; changing it rebuilds vectors.
+metric = "COSINE"
+
+# Cosine, job title vs your best-matching role (the title is split into parts, level / place
+# words dropped, abbreviations like ML / AI / LLM expanded). Used when "Roles you want" is set.
+# Measured on 17 real JSearch titles (2026-11-18): relevant 0.78-1.0; electronics / mechanical /
+# application support / backend operations 0.51-0.67.
+role_threshold = 0.72
+
+# Borderline rescue: a title at least this close still counts as relevant when the job text
+# also matches that role's context (Memory -> Role contexts) at least
+# borderline_context_threshold. 0 = off.
+borderline_role_threshold = 0.60
+
+# Measured on 32 stored jobs (2026-11-19): jobs you applied to / kept 0.53-0.67; unrelated jobs
+# with a near-miss title (Mechanical, Electronics, Build & Release, Backend Operations) 0.41-0.46.
+borderline_context_threshold = 0.50
+
+
+# ---- Salary comparison: value of 1 unit of each currency in USD -------------
+[scout.search.currency]
+
+USD = 1.0
+
+INR = 0.012
+
+EUR = 1.08
+
+GBP = 1.27
+
+CAD = 0.73
+
+AUD = 0.66
+
+SGD = 0.74
+
+AED = 0.27
+
+
+
+# ============================================================================
+#  LATER PHASES (uncomment when built)
+# ============================================================================
+
+# ---- Phase 3: Scout / Compass (matching weights, must sum to 1.0) ----------
+# [scout.compass]
+# skills = 0.30
+# experience = 0.25
+# role = 0.20
+# location = 0.15
+# qualifications = 0.10
+# llm_rerank_top_n = 30
+# min_score = 60
+
+# ---- Phase 5: Intern / Shifts (daily agent run) ----------------------------
+# [intern.shifts]
+# schedule_cron = "0 7 * * *"
+# timezone = "Asia/Kolkata"
+
+# ---- Phase 4+: Apply (application behaviour) -------------------------------
+# "prepare_only" | "approve_then_submit" | "pre_authorized"
+# [apply]
+# mode = "prepare_only"
+# daily_application_limit = 10

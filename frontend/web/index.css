@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+  Palette: warm "paper & ink" neutrals with one accent, clay.
+  The components use Tailwind's zinc-* (neutrals) and violet-* (accent) class names; the
+  values are redefined here, so changing the look means editing only this block.
+*/
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-serif: "Iowan Old Style", "Charter", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+
+  /* neutrals: warm paper -> ink */
+  --color-zinc-50: #f8f6f1;
+  --color-zinc-100: #f0ede6;
+  --color-zinc-200: #e3dfd6;
+  --color-zinc-300: #cfcac0;
+  --color-zinc-400: #a29d93;
+  --color-zinc-500: #77726a;
+  --color-zinc-600: #5b5750;
+  --color-zinc-700: #44413c;
+  --color-zinc-800: #2c2a27;
+  --color-zinc-900: #1d1c1a;
+  --color-zinc-950: #141312;
+
+  /* accent: clay */
+  --color-violet-50: #fbf2ec;
+  --color-violet-100: #f5e1d5;
+  --color-violet-200: #ebc3ad;
+  --color-violet-300: #de9f80;
+  --color-violet-400: #cf7c57;
+  --color-violet-500: #bd613a;
+  --color-violet-600: #a64f2d;
+  --color-violet-700: #874025;
+  --color-violet-800: #6c3421;
+  --color-violet-900: #582c1d;
+  --color-violet-950: #30160d;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  color-scheme: light;
+}
+html.dark {
+  color-scheme: dark;
+}
+body {
+  @apply bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100;
+}
+::selection {
+  @apply bg-violet-200 text-zinc-900;
+}
+
+@keyframes fade-in { from { opacity: 0 } to { opacity: 1 } }
+@keyframes pop-in { from { opacity: 0; scale: 0.98 } to { opacity: 1; scale: 1 } }
+@keyframes slide-in { from { transform: translateX(16px); opacity: 0 } to { transform: none; opacity: 1 } }
+@keyframes rise { from { transform: translateY(4px); opacity: 0 } to { transform: none; opacity: 1 } }
+@keyframes flash { 0%, 100% { box-shadow: 0 0 0 0 rgb(166 79 45 / 0) } 30% { box-shadow: 0 0 0 3px rgb(166 79 45 / 0.3) } }
+
+.fade-in { animation: fade-in 150ms ease-out; }
+.pop-in { animation: pop-in 140ms ease-out; }
+.slide-in { animation: slide-in 160ms ease-out; }
+.toast-in { animation: rise 160ms ease-out; }
+.page-in { animation: rise 180ms ease-out; }
+.flash { animation: flash 1.4s ease-out 2; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}

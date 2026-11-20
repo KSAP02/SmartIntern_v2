@@ -1,0 +1,8 @@
+so the app might be aligned with respect my perspective only right now its my resuem so all the jobs are 
+aligned with what i want but the application should mould its system based ont eh resume so  that anyobdy 
+can use it th basic fuction and the setttings of the app should exist but the stuff related
+to preferences job niches should be selective based on the user and their resume.
+
+also only jsearch api is not able to retreive the relevant jobs with a minimal query, maybe we need to 
+research on how to optimize thequery for jasearch or maybe we need to 
+include more job serach apis in the job pull so we have more option to choose and filter out from

@@ -1,0 +1,19 @@
+# backend only — mcp-server has its own requirements.txt
+fastapi
+uvicorn[standard]
+pydantic-settings
+python-multipart
+sqlmodel
+openai
+pymilvus
+milvus-lite
+pymupdf
+python-docx
+# Job Search: HTTP client for job sources, HTML -> text for job descriptions
+httpx
+beautifulsoup4
+# Admin settings: edit settings/config.toml in place, keeping its comments
+tomlkit
+
+# tests
+pytest
