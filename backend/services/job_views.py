@@ -146,7 +146,8 @@ def job_card(job: Job, preset: ApplyPreset, titles: dict[int, str], places: dict
         salary_period=job.salary_period, seniority=job.seniority, min_years_experience=job.min_years_experience,
         first_seen_at=job.first_seen_at,
         source_published_at=job.source_published_at,
-        seen_on=[SeenOn(source=s.get("source", ""), job_url=s.get("job_url")) for s in job.seen_on or []],
+        seen_on=[SeenOn(source=s.get("source", ""), job_url=s.get("job_url"),
+                        label=getattr(ADAPTERS.get(s.get("source", "")), "label", None)) for s in job.seen_on or []],
         relevance=job.relevance,
         role_score=job.role_score, role_match=job.role_match,
         coverage=Coverage(**job.coverage) if job.coverage else None, pipeline_status=job.pipeline_status,
@@ -156,6 +157,7 @@ def job_card(job: Job, preset: ApplyPreset, titles: dict[int, str], places: dict
         place_check=place_check(place, job.location_text, job.country_codes, job.workplace_type),
         expired=job.status == "expired",
         fits_preset=fits, preset_misses=misses, job_url=job.job_url, apply_url=job.apply_url,
+        apply_route=job.apply_route, apply_route_url=job.apply_route_url,
     )
 
 
@@ -170,13 +172,15 @@ def _view_filter(view: str):
 
 
 def list_jobs(session: Session, q: str | None = None, category: str | None = None, workplace: str | None = None,
-              view: str = "matches", max_years: float | None = None) -> JobsOut:
+              view: str = "matches", max_years: float | None = None, apply: str | None = None) -> JobsOut:
     preset = search_settings.get(session, "preset")
     jobs = list(session.exec(select(Job).where(_view_filter(view)).order_by(col(Job.first_seen_at).desc())).all())
     if category:
         jobs = [j for j in jobs if j.category == category]
     if workplace:
         jobs = [j for j in jobs if j.workplace_type == workplace]
+    if apply:  # "form" = the agent can apply; "direct" / "account" / "aggregator" / "platform"
+        jobs = [j for j in jobs if (j.apply_route or "").split(":")[0] == apply]
     if max_years is not None and view == "matches":  # Matches only; jobs that don't state years stay
         jobs = [j for j in jobs if j.min_years_experience is None or j.min_years_experience <= max_years]
     if q:
@@ -264,10 +268,15 @@ def sources_out(session: Session) -> list[SourceOut]:
             active[s] += 1
     out = []
     src = search_settings.get(session, "sources")
+    from backend.services import employers
+
+    from backend.services import remote_feeds
+
+    boards_on, feeds_on = employers.settings().enabled, remote_feeds.settings().enabled
     for name, a in ADAPTERS.items():
         row = session.get(JobSource, name)
         out.append(SourceOut(
-            name=name, label=a.label, kind=a.kind, enabled=src.enabled, terms_url=a.terms_url,
+            name=name, label=a.label, kind=a.kind, enabled={"search": src.enabled, "feed": feeds_on}.get(a.kind, boards_on), terms_url=a.terms_url,
             last_success_at=row.last_success_at if row else None, last_error_at=row.last_error_at if row else None,
             last_error=row.last_error if row else None, active_jobs=active[name],
             configured=getattr(a, "configured", lambda: True)(),

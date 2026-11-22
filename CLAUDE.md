@@ -17,31 +17,42 @@ seams that keep the project easy to change, everything in Docker. §1 describes 
 | 2 Job Search (rules + embeddings, no LLM; title-vs-roles relevance gate; requirement ↔ memory evidence map; apply preset; Admin settings = config.toml) | 🔍 built; **user's UI review pending** before ✅ | `phase_2_job_discovery_and_understanding.md` (§14) |
 | 2.5 JSearch-only, budget-planned search (query plan, request budget, scan picker, combined OR, decisions, per-request results, JSearch analytics) | 🔍 built, used live (22 requests by 2026-11-20) | `phase_2_5_jsearch_budgeted_search.md` (§17 + "Added" notes) |
 | 2.6 Role contexts + search precision, then **simplified on 2026-11-20** (see "Changed 2026-11-20" notes in the doc): criteria only shape the scan, Scan now = roles / location / date / editable query + the exact request, years = Jobs-page filter, location highlighted not filtered, daily-limit switch | 🔍 built; **user says JSearch now works well enough** (2026-11-20) → mark 2 / 2.5 / 2.6 ✅ after a last UI look | `phase_2_6_role_contexts_and_search_precision.md` |
-| 2.7 More sources for **jobs in India** (or remote and open to India; no international-only sources): A source refactor + Jooble, B company ATS boards + Companies list, C remote feeds (open-to-India only), D careers-page reader if needed | 📝 plan rewritten 2026-11-20: India scope, **form-first** (jobs the agent can apply to), one Scan button for all sources; D1–D4 decided, D5 research; next: build A0 | `phase_2_7_india_first_multi_source_discovery.md` |
-| 3–7 Scoring / prepare applications / daily agent / automation / deploy | later | `README.md` in the phase folder |
+| 2.7 More sources for **jobs in India** (or remote and open to India; no international-only sources): A source refactor + Jooble, B company ATS boards + Companies list, C remote feeds (open-to-India only), D careers-page reader if needed | 🔍 **all steps built 2026-11-22** except Jooble (parked by the user) and Rippling (not built: apply flow unconfirmed): A0 sources + apply route; A1/A2 company boards (Greenhouse / Lever / Ashby / SmartRecruiters) + 34 starter companies, system-managed; **A3** companies found automatically; **A4** Workable + Recruitee; **C1** remote feeds Himalayas / RemoteJobs.org / Remotive (open to India only); **E** (2026-11-22) company finder (seed list + careers pages + name guesses + Common Crawl index), Indian boards Keka / Darwinbox / Zoho Recruit (finding only: CAPTCHA forms), weekly reads of quiet boards, one row per scan. **User tests on localhost; no deploy / push until then** → ✅ |  `phase_2_7_india_first_multi_source_discovery.md` |
+| 3–6 Scoring + agent selection / prepare applications / daily agent / controlled automation (apply) | later | `README.md` in the phase folder |
+| 7 Deploy | 🟡 partly: **deployed 2026-11-20** (frontend on Vercel, backend on Render; commit 859a7af). Still open: Postgres, S3 file storage, Milvus server / Zilliz, login (OAuth); persistence of SQLite / Milvus Lite / resume files on Render to confirm | `README.md` in the phase folder |
 
-Backend tests: 189 green (`docker compose run --rm --no-deps backend pytest backend/tests -q`).
+Backend tests: 224 green (`docker compose run --rm --no-deps backend pytest backend/tests -q`).
 Frontend: `cd frontend && npm run typecheck && npm run build`. Stack: `docker compose up --build -d`.
-Nothing has been committed to git yet (all files untracked); commit only when the user asks.
+Git: on `main`, pushed to `origin` (first commits 2026-11-20: initial, README, deploy prep, Desk About card).
+Commit / push only when the user asks.
 
 ### ▶ Next session: start here
 
-1. **Phase 2.7 (India scope, form-first)**: decisions D1–D4 made 2026-11-20 (2.7 doc). Goal:
-   jobs the future agent **can apply to by itself** (public ATS form, no login / account
-   creation, posting still live); what it can't apply to becomes "needs you" for manual apply
-   (Phases 4–6). Build order: **A0** shared source structure (registry, JSearch moved onto it
-   unchanged, budget per source — `api_budget` counts only "jsearch" today —, per-source
-   analytics, Scan now source ticks) + **apply route for every job** (`form:<ats>` /
-   `account:<ats>` / `direct` / `aggregator:` / `platform:`; JSearch `apply_options` classified;
-   "Agent can apply" filter); **A1** Companies list + Greenhouse / Lever / Ashby /
-   SmartRecruiters boards (India scope + title pre-check); **A2** Claude drafts a starter
-   company list, user approves each; research which ATSs need accounts (D5); **B1** Jooble (user
-   is requesting `JOOBLE_API_KEY`); **C1** remote feeds, open-to-India only. Scope rule: a
-   source must cover India; remote only when open to India; international-only sources out.
-   **Design rule: copy the JSearch way for every source**: one Scan now button hits all
-   enabled sources with the same shared options (roles, location, date, query); source-specific
-   options only where needed (collapsed); same dry run / budget / request log / "why these
-   results" / analytics per source (2.7 doc §3).
+1. **Phase 2.7 (India scope, form-first)** — built 2026-11-22 (2.7 doc "Build notes": A0, A1,
+   A2, A3, A4, C1, **E**). **The user tests everything on localhost first; do not deploy, commit
+   or push until they say so** (user, 2026-11-22: make search + filtering as good and efficient as
+   possible before deploying). Then mark 2.7 ✅. **E:** the company finder
+   (`services/company_finder.py`, `crawl_index.py`, table `company_leads`, seed list
+   `services/seed_companies.csv`, Scan Jobs → Company finder card, `[scout.search.finder]`) keeps
+   companies whose board has jobs in India; Keka / Darwinbox / Zoho Recruit boards (apply =
+   needs you); quiet boards read weekly (`employers.next_read_at`); research in
+   `api_references/indian_ats.md`, `common_crawl.md`. Not verified live yet: careers-page reading,
+   name guessing, Common Crawl paging (the user's first Find companies run). The system manages the companies (no Companies page): 34 starter companies +
+   companies **found automatically** from stored jobs' apply links (`employers.discover`, origin
+   `discovered`, switched off when their board has no India jobs); dead boards switched off.
+   Scan now → Sources, grouped: Job search (JSearch) / Company boards (Greenhouse, Lever, Ashby,
+   SmartRecruiters, Workable, Recruitee) / Remote feeds · open to India (Himalayas,
+   RemoteJobs.org, Remotive; `services/remote_feeds.py`, `[scout.search.feeds]`). Feed / Workable
+   / Recruitee response shapes are from docs, **not verified live**: the user's first scan is the
+   check. Jooble **parked** (user, 2026-11-22: aggregator, few agent-fillable jobs). Rippling
+   **not built** (undocumented API, apply flow unconfirmed; `api_references/ats_boards.md`).
+   Recruitee's API needs a company token from 10 Feb 2027.
+   Company boards: `services/employers.py` (pre-check, discover, `collect` in the scan),
+   `sources/{greenhouse,lever,ashby,smartrecruiters,workable,recruitee}.py`,
+   `[scout.search.boards]` in config.toml. Boards and feeds are off in the test config (conftest).
+   Tests must never leave an `employers` row behind (a later scan would read a real board).
+   **Design rule: copy the JSearch way for every source** (one Scan now for all, shared options,
+   dry run / budget / request log / why-these-results / analytics per source).
 2. Mark Phases 2, 2.5 and 2.6 ✅ once the user has had a last look at Scan now, Jobs and Admin.
 3. Later (2.6 "Later"): labelled set + evaluation panel, discard reasons, one rank score;
    Phase 3 = AI scoring with a written gap note per job.
@@ -75,7 +86,10 @@ Nothing has been committed to git yet (all files untracked); commit only when th
   request (default "<role> [internship] in <place>"; "Default" resets) and **the exact request**
   under it (every parameter). `POST /api/scout/search/plan` (dry run) / `.../scan` take
   `{roles, combine, locations, date_posted, query_texts}`; a manual scan sends exactly what is
-  shown. **Requests and what they found**: each request expands to its jobs (JSearch's order,
+  shown. **Scans and what they found** (one row per scan, 2026-11-22; `GET .../scan-requests`,
+  `jsearch_analytics.scan_history`; replaced the separate "Recent scans" list): a scan opens to
+  its requests grouped JSearch / each board system with its companies / remote feeds; each
+  request expands to its jobs (JSearch's order,
   outcome, where each job is now; `GET .../calls/{id}/jobs`), **Why these results** / **Next
   time** and each parameter in plain words (`GET .../calls/{id}/explain`,
   `services/request_explain.py`). Quota meter, funnel, per-day chart.
@@ -147,7 +161,7 @@ Keep this section updated as decisions are made.
   provider usage, per-day requests and yield, searches, call log), Switchboard `/switchboard`
   (status). Later:
   Drafts, Outbox, Shifts, Pulse.
-- **Job source: JSearch only** (since Phase 2.5; RapidAPI free tier, 200 requests/month,
+- **Job sources (Phase 2.7):** JSearch + company boards + remote feeds (see "Next session" above). Before 2.7: **JSearch only** (since Phase 2.5; RapidAPI free tier, 200 requests/month,
   1 request = up to 10 jobs). What a scan sends = `services/search_plan.py`; whether it may =
   `services/api_budget.py`; HTTP = `services/sources/jsearch.py`. Former sources (Remotive,
   Arbeitnow, Remote OK, Greenhouse, Lever, Ashby, Adzuna) are documented in

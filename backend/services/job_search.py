@@ -23,7 +23,7 @@ from backend.db import (
 )
 from backend.job_schemas import NormalizedJob, SearchCriteria
 from backend.model import embed
-from backend.services import role_contexts, search_settings
+from backend.services import apply_route, role_contexts, search_settings
 from backend.services.job_facts import derive_facts
 from backend.services.job_text import (
     canonical_url, content_hash, dedupe_key, expand_abbreviations, job_plain_text, title_variants,
@@ -79,10 +79,17 @@ def _set_status(session: Session, job: Job, status: str, reason: str | None = No
 
 
 def ensure_sources(session: Session) -> None:
-    for name in ADAPTERS:
-        if session.get(JobSource, name) is None:
-            session.add(JobSource(name=name, enabled=True))
-    session.commit()
+    # Two page loads at once (or a scan) may both find a new source missing: the second insert
+    # loses the race, which is fine (the row exists).
+    from sqlalchemy.exc import IntegrityError
+
+    have = set(session.exec(select(JobSource.name)).all())
+    for name in (n for n in ADAPTERS if n not in have):
+        session.add(JobSource(name=name, enabled=True))
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()
 
 
 # ── ① + ② : ingest one fetched job ────────────────────────────────────────────
@@ -93,6 +100,20 @@ def _apply_facts(job: Job, n: NormalizedJob, text: str) -> None:
     for f in FACT_FIELDS:
         setattr(job, f, facts.get(f) if f not in ("country_codes", "remote_regions") else list(facts.get(f) or []))
     job.field_sources = dict(facts.get("field_sources") or {})
+
+
+def route_for(n: NormalizedJob) -> tuple[str | None, str | None]:
+    """The best apply route of a fetched job (its apply links, then its posting / apply URL)."""
+    links = [(x.get("url"), bool(x.get("direct"))) for x in n.apply_links]
+    links += [(n.apply_url, False), (n.job_url, False)]
+    return apply_route.best(links, n.company_name)
+
+
+def _take_route(job: Job, n: NormalizedJob) -> None:
+    """Keep the better apply route when a job is seen again (or from another source)."""
+    route, url = route_for(n)
+    if apply_route.better(route, job.apply_route):
+        job.apply_route, job.apply_route_url = route, url
 
 
 def ingest(session: Session, n: NormalizedJob, api_call_id: int | None, recency_days: int, repost_days: int) -> str:
@@ -117,6 +138,7 @@ def ingest(session: Session, n: NormalizedJob, api_call_id: int | None, recency_
             job.status = "active"
         if n.highlights and job.highlights != n.highlights:
             job.highlights = n.highlights
+        _take_route(job, n)
         if job.content_hash != chash:
             job.title, job.description_text, job.content_hash = n.title, text, chash
             _apply_facts(job, n, text)
@@ -140,6 +162,7 @@ def ingest(session: Session, n: NormalizedJob, api_call_id: int | None, recency_
         if existing is not None:
             existing.seen_on = [*existing.seen_on, {"source": n.source, "source_job_id": n.source_job_id, "job_url": n.job_url}]
             existing.last_seen_at = now
+            _take_route(existing, n)
             session.add(existing)
             session.add(JobLedger(source=n.source, source_job_id=n.source_job_id, dedupe_key=dkey, canonical_url=url,
                                   job_id=existing.id, first_seen_date=now.date().isoformat(), outcome=match.outcome,
@@ -153,7 +176,9 @@ def ingest(session: Session, n: NormalizedJob, api_call_id: int | None, recency_
             return "already_seen"
         repost_of = match.first_seen_date
 
+    route, route_url = route_for(n)
     job = Job(
+        apply_route=route, apply_route_url=route_url,
         seen_on=[{"source": n.source, "source_job_id": n.source_job_id, "job_url": n.job_url}],
         dedupe_key=dkey, canonical_url=url, content_hash=chash, company_name=n.company_name,
         api_call_id=api_call_id, highlights=n.highlights, title=n.title, location_text=n.location_text,
@@ -389,7 +414,11 @@ def prune(session: Session) -> dict[str, int]:
     days = lambda n: now - timedelta(days=n)  # noqa: E731
 
     expired = 0
+    from backend.services.sources import BOARDS
+
     for job in session.exec(select(Job).where(Job.status == "active")).all():
+        if any(x.get("source") in BOARDS for x in job.seen_on or []):
+            continue  # a company board says when its posting closes (employers._close_missing)
         posted = _aware(job.source_published_at) or _aware(job.first_seen_at)
         if posted and posted < days(lim.expire_after_days):
             job.status, job.status_changed_at = "expired", now
@@ -530,6 +559,32 @@ def reapply_criteria_if_needed() -> None:
             set_meta(s, "criteria_version", CRITERIA_VERSION)
             s.commit()
         compass.map_pending()
+
+
+APPLY_ROUTE_VERSION = "1"  # bump when services/apply_route.py rules change: routes are re-derived on start
+
+
+def apply_routes_if_needed() -> int:
+    """Start-up: (re)derive every job's apply route when the rules changed, from its stored raw
+    record (all its apply links, while kept) or its posting / apply URL. Returns jobs changed."""
+    from backend.db import get_meta, set_meta
+    from backend.services.sources.jsearch import apply_links
+
+    with new_session() as s:
+        if get_meta(s, "apply_route_version") == APPLY_ROUTE_VERSION:
+            return 0
+        changed = 0
+        for job in s.exec(select(Job)).all():
+            links = [(x["url"], x["direct"]) for x in apply_links(job.raw_payload)] if job.raw_payload else []
+            links += [(job.apply_url, False), (job.job_url, False)]
+            route, url = apply_route.best(links, job.company_name)
+            if (route, url) != (job.apply_route, job.apply_route_url):
+                job.apply_route, job.apply_route_url = route, url
+                s.add(job)
+                changed += 1
+        set_meta(s, "apply_route_version", APPLY_ROUTE_VERSION)
+        s.commit()
+    return changed
 
 
 def reembed_jobs_if_needed() -> int:
@@ -708,6 +763,15 @@ def _run(scan_id: str, trigger: str, selection=None) -> None:
             ensure_sources(s)
         call_ids = fetch_jsearch(scan_id, trigger, totals, selection)
         _set_phase(scan_id, "fetching", totals)
+        from backend.services import employers, remote_feeds  # company boards (2.7 A1) + remote feeds (C1)
+
+        call_ids += remote_feeds.collect(scan_id, totals, selection)
+        _set_phase(scan_id, "fetching", totals)
+        found = employers.discover()  # companies whose boards the stored jobs link to (A3)
+        if found:
+            totals["companies_found"] = len(found)
+        call_ids += employers.collect(scan_id, totals, selection)
+        _set_phase(scan_id, "fetching", totals)
         with pipeline_lock:
             _set_phase(scan_id, "processing", totals)
             with new_session() as s:
@@ -722,6 +786,10 @@ def _run(scan_id: str, trigger: str, selection=None) -> None:
             with new_session() as s:
                 totals.update({f"pruned_{k}": v for k, v in prune(s).items()})
         _set_phase(scan_id, "done", totals, done=True)
+        from backend.services import company_finder  # Phase 2.7 E: find more companies, in the background
+
+        if company_finder.settings().run_after_scan:
+            company_finder.start("after_scan")
     except Exception as e:  # noqa: BLE001 - recorded on the scan, shown in the UI
         log.exception("scan %s failed", scan_id)
         _set_phase(scan_id, "failed", totals, error=f"{type(e).__name__}: {e}"[:300], done=True)

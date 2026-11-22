@@ -7,7 +7,7 @@ import { cx } from "../../lib/util";
 import { Badge, Button, ErrorBanner, Skeleton } from "../ui";
 import { Modal } from "../Modal";
 import { useToast } from "../Toast";
-import { CATEGORY_LABEL, SENIORITY_LABEL, WORKPLACE_LABEL, dateTime, foundAgo, formatPay, pct } from "./format";
+import { applyRoute, CATEGORY_LABEL, dateTime, formatPay, foundAgo, pct, SENIORITY_LABEL, WORKPLACE_LABEL } from "./format";
 import { MiniBar } from "./ToggleChips";
 import { AddRoleModal } from "./AddRole";
 
@@ -103,6 +103,33 @@ function SectionTitle({ children }: { children: ReactNode }) {
 }
 
 /** Right-side drawer with one job's facts, evidence map and description. */
+const ROUTE_HINT: Record<string, string> = {
+  form: "a company application form with no account needed: the agent will be able to fill it in.",
+  direct: "the employer's own site; the form isn't known yet.",
+  account: "this company's hiring system makes you create an account first.",
+  aggregator: "a job board that sends you on to the real posting.",
+  platform: "a site that needs your login; you apply there yourself.",
+};
+
+/** How this job can be applied to (Phase 2.7 apply route). */
+function ApplyRouteLine({ route, url }: { route: string | null; url: string | null }) {
+  const r = applyRoute(route);
+  if (!r) return null;
+  return (
+    <p className="text-sm text-zinc-600 dark:text-zinc-400">
+      <span className={r.kind === "form" ? "font-medium text-emerald-700 dark:text-emerald-400" : "font-medium text-zinc-900 dark:text-zinc-100"}>{r.label}</span>: {ROUTE_HINT[r.kind] ?? ""}
+      {url && (
+        <>
+          {" "}
+          <a href={url} target="_blank" rel="noopener noreferrer" className="text-violet-700 hover:underline dark:text-violet-300">
+            Open
+          </a>
+        </>
+      )}
+    </p>
+  );
+}
+
 export function JobDetailPanel({ jobId, onClose, onChanged }: { jobId: number | null; onClose: () => void; onChanged: (j: JobCard) => void }) {
   const toast = useToast();
   const [job, setJob] = useState<JobDetail | null>(null);
@@ -178,6 +205,7 @@ export function JobDetailPanel({ jobId, onClose, onChanged }: { jobId: number | 
       )}
       {job && (
         <div className="space-y-7">
+          <ApplyRouteLine route={job.apply_route} url={job.apply_route_url} />
           <div className="flex flex-wrap items-center gap-2">
             {job.job_url && (
               <a href={job.job_url} target="_blank" rel="noopener noreferrer">
@@ -313,10 +341,10 @@ export function JobDetailPanel({ jobId, onClose, onChanged }: { jobId: number | 
                     {i > 0 && ", "}
                     {s.job_url ? (
                       <a href={s.job_url} target="_blank" rel="noopener noreferrer" className="hover:text-violet-700 hover:underline dark:hover:text-violet-300">
-                        {s.source}
+                        {s.label ?? s.source}
                       </a>
                     ) : (
-                      s.source
+                      (s.label ?? s.source)
                     )}
                   </span>
                 ))}

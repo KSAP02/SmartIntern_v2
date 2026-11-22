@@ -1,0 +1,63 @@
+[
+ {
+  "id": 143320,
+  "title": "Chief Delivery Officer",
+  "description": "<p>Build backend services in Python.</p>",
+  "departmentIdentifier": "67702a03-56bf-4eb0-a6c0-3de029cb7b5d",
+  "departmentName": "Client Services",
+  "excerpt": "Build backend services.",
+  "jobLocations": [
+   {
+    "id": 3220,
+    "name": "Corporate Office",
+    "city": "Hyderabad",
+    "state": "TG",
+    "countryCode": "IN",
+    "countryName": "India"
+   }
+  ],
+  "jobType": 2,
+  "experience": "20+ years",
+  "jobNumber": "PT0199",
+  "salaryRange": {
+   "currency": "INR",
+   "salaryPeriod": 0,
+   "cultureInfo": "en-IN"
+  },
+  "salaryRangeFormat": "",
+  "publishedOn": "2026-11-17T07:04:28.263Z",
+  "publishedSinceDays": 5,
+  "ogImagePath": "documents/68040a7985314e67b4607f13d2b70838.png",
+  "skillNames": []
+ },
+ {
+  "id": 142405,
+  "title": "Senior Software Engineer (AS400)",
+  "description": "<p>Build backend services in Python.</p>",
+  "departmentIdentifier": "8be003f3-20c2-4dd0-b082-8fd79b3e9875",
+  "departmentName": "Engineering",
+  "excerpt": "Build backend services.",
+  "jobLocations": [
+   {
+    "id": 3220,
+    "name": "Corporate Office",
+    "city": "Hyderabad",
+    "state": "TG",
+    "countryCode": "IN",
+    "countryName": "India"
+   }
+  ],
+  "jobType": 2,
+  "experience": "4 to 6",
+  "jobNumber": "PT0198",
+  "salaryRange": {
+   "currency": "INR",
+   "salaryPeriod": 0,
+   "cultureInfo": "en-IN"
+  },
+  "salaryRangeFormat": "",
+  "publishedOn": "2026-11-17T07:04:51.957Z",
+  "publishedSinceDays": 5,
+  "skillNames": []
+ }
+]

@@ -326,7 +326,7 @@ export default function JobSearchSettings() {
             <Section
               id="plan"
               title="Search plan"
-              description={dirty("criteria") ? "Save the search criteria to see their plan. Building the plan calls nothing (a dry run)." : "Exactly what the next scan sends to JSearch, and what it costs. Building the plan calls nothing (a dry run)."}
+              description={dirty("criteria") ? "Save the search criteria to see their plan. Building the plan calls nothing (a dry run)." : "What the next automatic scan would send (for the automatic agent later). Building it calls nothing."}
             >
               <SearchPlan plan={plan.data} error={plan.error} loading={plan.loading} reload={() => void plan.reload()} />
             </Section>

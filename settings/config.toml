@@ -340,6 +340,100 @@ min_date_posted = "week"
 send_experience_filter = true
 
 
+# ---- Company job boards (Phase 2.7 A1) --------------------------------------
+# Greenhouse / Lever / Ashby / SmartRecruiters boards of the companies in Search Settings ->
+# Companies. Free (no request budget); each enabled company is checked on every scan.
+[scout.search.boards]
+
+# Collect from company boards at all (Scan now can also skip them for one scan).
+enabled = true
+
+# Seconds to wait between two companies, to stay polite to the boards.
+delay_seconds = 1.0
+
+# Seconds before one board request gives up.
+timeout_seconds = 20.0
+
+# SmartRecruiters lists postings without descriptions: at most this many detail requests per
+# company per scan (only for jobs that passed the India + title pre-check).
+max_details_per_board = 40
+
+# Find companies automatically: after each scan, a job whose apply link points to a company board
+# (Greenhouse, Lever, ...) adds that company, read from the next scan on.
+discover = true
+
+# At most this many new companies per scan (each one adds a board read to every scan).
+max_new_per_scan = 10
+
+# A found company whose board had no job in India this many scans in a row is switched off
+# (its first read counts: a board with nothing in India is switched off at once).
+drop_after_empty_scans = 3
+
+# A found company switched off for having no jobs in India may be tried again after this many
+# days, when a new job links to it again.
+retry_after_days = 30
+
+# A board with no job matching your roles at its last read is read again only after this many
+# days (0 = read every board on every scan). Changing your roles makes every board due again.
+quiet_board_days = 7
+
+
+# ---- Company finder (Phase 2.7 E) -------------------------------------------
+# Finds companies hiring in India and their job boards, in the background: the seed list of
+# Indian companies (backend/services/seed_companies.csv) and board addresses from the Common
+# Crawl URL index. A company becomes one the scan reads only if its board has jobs in India.
+# Free: public pages and public boards only.
+[scout.search.finder]
+
+# Run the company finder at all.
+enabled = true
+
+# Start the finder in the background after each scan (when it isn't already running).
+run_after_scan = true
+
+# Companies checked per finder run.
+leads_per_run = 40
+
+# Seconds to wait between two requests to boards and careers pages.
+delay_seconds = 1.0
+
+# Seconds before one request gives up.
+timeout_seconds = 15.0
+
+# A company whose board had no job in India is checked again after this many days.
+recheck_after_days = 30
+
+# A company whose board couldn't be found is checked again after this many days.
+no_board_recheck_days = 90
+
+# Read board addresses from the Common Crawl URL index (free, public).
+crawl = true
+
+# Seconds between two Common Crawl index requests (their guidance: slow, one at a time).
+crawl_delay_seconds = 5.0
+
+# Common Crawl index pages read per finder run (each page lists many board addresses).
+crawl_pages_per_run = 4
+
+
+# ---- Remote-job feeds (Phase 2.7 C1) ----------------------------------------
+# Himalayas, RemoteJobs.org, Remotive: free, no key. Only jobs open to candidates in India
+# (worldwide / Asia / APAC / India) whose title matches your roles are kept.
+[scout.search.feeds]
+
+# Collect from remote feeds at all (Scan now can also skip one feed for one scan).
+enabled = true
+
+# Seconds to wait between two feed requests.
+delay_seconds = 1.0
+
+# Seconds before one feed request gives up.
+timeout_seconds = 20.0
+
+# Searchable feeds (Himalayas, RemoteJobs.org) get one request per role of the scan, at most this many.
+max_queries_per_feed = 5
+
+
 # ---- Schedule ---------------------------------------------------------------
 [scout.search.schedule]
 

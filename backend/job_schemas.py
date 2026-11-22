@@ -52,6 +52,9 @@ class NormalizedJob(BaseModel):
     tags: list[str] = Field(default_factory=list)
     job_url: str | None = None  # the posting page
     apply_url: str | None = None  # where to apply, if different
+    # Every apply link the source knows: [{"url": ..., "direct": the source says it's the employer's
+    # own site}]. Used to set the job's apply route (services/apply_route.py).
+    apply_links: list[dict] = Field(default_factory=list)
     source_published_at: datetime | None = None
     raw: dict | None = None  # original record (kept only for a few days)
     # The source's own requirement lists, e.g. {"Qualifications": [...], "Responsibilities": [...]}.
@@ -216,7 +219,7 @@ class AutoscanToggle(BaseModel):
 class SourceOut(BaseModel):
     name: str
     label: str
-    kind: Literal["feed", "ats"]
+    kind: Literal["search", "board", "feed", "page"]
     enabled: bool
     terms_url: str | None
     last_success_at: datetime | None
@@ -357,11 +360,145 @@ class ScanSelection(BaseModel):
     date_posted: Literal["today", "3days", "week", "month", "all"] | None = None
     # Query text you typed, per search (query_id -> text); missing / empty = the generated text.
     query_texts: dict[int, str] | None = Field(default=None, max_length=20)
+    # Sources to collect from this time (registry names); None = every enabled source.
+    sources: list[str] | None = Field(default=None, max_length=20)
 
     @field_validator("experience_years", mode="before")
     @classmethod
     def _clean_years(cls, v):
         return _years(v)
+
+
+class BoardsSettings(BaseModel):
+    """[scout.search.boards] in config.toml: company job boards (Phase 2.7 A1)."""
+
+    enabled: bool = True
+    delay_seconds: float = Field(default=1.0, ge=0)
+    timeout_seconds: float = Field(default=20.0, gt=0)
+    max_details_per_board: int = Field(default=40, ge=0)
+    # Phase 2.7 A3: companies found in the apply links of stored jobs are added automatically.
+    discover: bool = True
+    max_new_per_scan: int = Field(default=10, ge=0)
+    drop_after_empty_scans: int = Field(default=3, ge=1)
+    retry_after_days: int = Field(default=30, ge=1)
+    # Phase 2.7 E: a board with no job matching your roles is read again only after this many days.
+    quiet_board_days: int = Field(default=7, ge=0)
+
+
+class FinderSettings(BaseModel):
+    """[scout.search.finder] in config.toml: the company finder (Phase 2.7 E)."""
+
+    enabled: bool = True
+    run_after_scan: bool = True
+    leads_per_run: int = Field(default=40, ge=1, le=1000)
+    delay_seconds: float = Field(default=1.0, ge=0)
+    timeout_seconds: float = Field(default=15.0, gt=0)
+    recheck_after_days: int = Field(default=30, ge=1)
+    no_board_recheck_days: int = Field(default=90, ge=1)
+    crawl: bool = True
+    crawl_delay_seconds: float = Field(default=5.0, ge=1)
+    crawl_pages_per_run: int = Field(default=4, ge=0, le=200)
+
+
+class FinderLeadOut(BaseModel):
+    """A company the finder kept (its board has jobs in India)."""
+
+    name: str
+    kind: str | None
+    kind_label: str | None
+    how: str | None  # careers_page | guessed | crawl
+    total_jobs: int | None
+    india_jobs: int | None
+    matching_jobs: int | None
+    checked_at: datetime | None
+
+
+class CrawlProgressOut(BaseModel):
+    collection: str | None  # the Common Crawl index read, e.g. CC-MAIN-2026-40
+    hosts: list[dict] = Field(default_factory=list)  # [{host, pages, done}]
+    leads: int = 0  # board addresses found in it so far
+
+
+class FinderStatusOut(BaseModel):
+    """Scan Jobs -> Company finder (Phase 2.7 E)."""
+
+    enabled: bool
+    running: bool
+    trigger: str | None = None
+    message: str | None = None
+    error: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+    last_run: dict[str, int] = Field(default_factory=dict)
+    by_status: dict[str, int] = Field(default_factory=dict)  # pending / kept / no_india_jobs / no_board / error
+    by_origin: dict[str, int] = Field(default_factory=dict)  # seed / crawl
+    crawl: CrawlProgressOut | None = None
+    kept: list[FinderLeadOut] = Field(default_factory=list)
+
+
+class FeedsSettings(BaseModel):
+    """[scout.search.feeds] in config.toml: remote-job feeds, open to India only (Phase 2.7 C1)."""
+
+    enabled: bool = True
+    delay_seconds: float = Field(default=1.0, ge=0)
+    timeout_seconds: float = Field(default=20.0, gt=0)
+    max_queries_per_feed: int = Field(default=5, ge=1, le=20)
+
+
+BoardKind = str  # a BOARDS registry name: greenhouse | lever | ashby | smartrecruiters | workable | recruitee
+
+
+class EmployerOut(BaseModel):
+    id: int
+    name: str
+    kind: BoardKind
+    kind_label: str  # "Greenhouse"
+    board: str
+    board_url: str  # the public board page
+    careers_url: str | None
+    enabled: bool
+    origin: Literal["you", "starter", "discovered"]
+    note: str | None
+    last_checked_at: datetime | None
+    last_error: str | None
+    last_found: int | None
+    last_in_scope: int | None
+    last_kept: int | None
+
+
+class EmployerAdd(BaseModel):
+    url: str = Field(min_length=4, max_length=500)  # a careers / board link
+    name: str | None = Field(default=None, max_length=120)  # default: from the board id
+
+
+class EmployerPatch(BaseModel):
+    enabled: bool | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+
+
+class EmployerCheckOut(BaseModel):
+    """What one board has now, without storing anything (Companies -> Check)."""
+
+    employer: EmployerOut
+    found: int  # postings on the board
+    in_scope: int  # in India or remote open to India
+    kept: int  # of those, title matches your roles (would be collected)
+    examples: list[str]  # up to 8 kept titles with their location
+    error: str | None = None
+
+
+class PlanSource(BaseModel):
+    """One job source in a scan plan (Scan now's Sources list)."""
+
+    name: str  # registry name, e.g. "jsearch"
+    label: str  # "JSearch"
+    kind: str  # search | board | feed | page
+    configured: bool  # its keys are in .env
+    enabled: bool  # switched on in Admin
+    chosen: bool  # part of this scan
+    requests: int  # metered requests it will spend (0 for free sources)
+    summary: str  # one line, e.g. "1 request · 18 left today"
+    details: list[str] = Field(default_factory=list)  # board systems: the companies it reads
 
 
 class SearchPlanOut(BaseModel):
@@ -380,6 +517,7 @@ class SearchPlanOut(BaseModel):
     variant: str | None = None  # the wording of these requests, e.g. "titles · exp off"
     after: list[str] = Field(default_factory=list)  # what we check on the returned jobs, in plain words
     not_sent: list[str] = Field(default_factory=list)  # your settings that aren't sent to JSearch, and why
+    sources: list[PlanSource] = Field(default_factory=list)  # every registered source and what it will do
 
 
 class QueryPatch(BaseModel):
@@ -417,6 +555,27 @@ class ApiCallOut(BaseModel):
     relevant_jobs: int
     error: str | None
     variant: str | None = None
+    api: str = "jsearch"  # the source's registry name: jsearch | greenhouse | ... | himalayas | ...
+    source_kind: str = "search"  # search | board | feed (how the UI words the line)
+    source_label: str | None = None  # "Himalayas"
+    # Company boards: postings left out by the pre-check (outside India / title not matching).
+    skipped_scope: int | None = None
+    skipped_title: int | None = None
+    scan_id: str | None = None
+
+
+class ScanRequestsOut(BaseModel):
+    """Scan Jobs → Requests: one scan (every source it read) with its requests, newest first.
+    A request sent outside a scan (Admin test, calibration) is its own entry with scan_id None."""
+
+    scan_id: str | None
+    trigger: str | None = None  # manual | auto (None for a request outside a scan)
+    phase: str | None = None
+    started_at: datetime
+    finished_at: datetime | None = None
+    error: str | None = None
+    totals: dict[str, int] = Field(default_factory=dict)
+    calls: list[ApiCallOut]
 
 
 class UsageDay(BaseModel):
@@ -460,6 +619,20 @@ class WordingYield(BaseModel):
     relevant_per_request: float | None
 
 
+class SourceYield(BaseModel):
+    """What one job source brought (Phase 2.7 per-source table)."""
+
+    source: str
+    label: str
+    requests: int  # metered requests in the window (0 for free sources)
+    results: int  # jobs its requests returned
+    new_jobs: int
+    jobs: int  # stored jobs it found (a job seen on several sources counts for each)
+    in_matches: int  # of those, undecided and relevant now
+    applied: int
+    agent_can_apply: int  # of `jobs`, with a form:<ats> apply route
+
+
 class JSearchAnalyticsOut(BaseModel):
     """Admin -> JSearch analytics: budget, provider's view, and what the requests bought."""
 
@@ -473,6 +646,7 @@ class JSearchAnalyticsOut(BaseModel):
     queries: list[QueryOut]
     recent: list[ApiCallOut]
     by_wording: list[WordingYield] = Field(default_factory=list)  # Phase 2.6 query lab
+    by_source: list[SourceYield] = Field(default_factory=list)  # Phase 2.7: one row per source
 
 
 class FetchRunOut(BaseModel):
@@ -539,6 +713,7 @@ class Coverage(BaseModel):
 class SeenOn(BaseModel):
     source: str
     job_url: str | None
+    label: str | None = None  # "Himalayas" (feeds' terms: credit them with a link to their job page)
 
 
 class JobCard(BaseModel):
@@ -577,7 +752,13 @@ class JobCard(BaseModel):
     preset_misses: list[str]  # human reasons, e.g. "Unpaid", "Asks 5+ years"
     job_url: str | None
     apply_url: str | None
+    # How it can be applied to (Phase 2.7): form:<ats> (the agent can apply) | direct | account:<ats>
+    # | aggregator:<name> | platform:<name>; None = no link. And that link.
+    apply_route: str | None = None
+    apply_route_url: str | None = None
 
+
+ApplyKind = Literal["form", "direct", "account", "aggregator", "platform"]
 
 JobsView = Literal["matches", "selected", "applied", "discarded", "not_relevant", "excluded"]
 

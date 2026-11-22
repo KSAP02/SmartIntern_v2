@@ -461,7 +461,7 @@ export interface AdminSettingsOut {
 export interface SourceOut {
   name: string;
   label: string;
-  kind: "feed" | "ats";
+  kind: "search" | "board" | "feed" | "page";
   enabled: boolean;
   terms_url: string | null;
   last_success_at: string | null;
@@ -536,6 +536,8 @@ export interface Coverage {
 export interface SeenOn {
   source: string;
   job_url: string | null;
+  /** "Himalayas": shown as the credit, linking to the source's job page. */
+  label: string | null;
 }
 
 export interface JobCard {
@@ -580,6 +582,10 @@ export interface JobCard {
   preset_misses: string[];
   job_url: string | null;
   apply_url: string | null;
+  /** How it can be applied to: form:<ats> (the agent can apply) | direct | account:<ats> |
+   *  aggregator:<name> | platform:<name>; null = no link. And that link. */
+  apply_route: string | null;
+  apply_route_url: string | null;
 }
 
 export type JobDecision = "selected" | "discarded" | "applied";
@@ -643,6 +649,8 @@ export interface JobsQuery {
   view?: JobsView;
   /** Matches only: hide jobs asking for more years than this (jobs that don't say stay). */
   max_years?: number;
+  /** form = the agent can apply; direct / account / aggregator / platform. */
+  apply?: ApplyKind;
 }
 
 // ── JSearch search plan + request budget (Phase 2.5) ─────────────────────────
@@ -719,6 +727,21 @@ export interface UsageDay {
   relevant_jobs: number;
 }
 
+export type ApplyKind = "form" | "direct" | "account" | "aggregator" | "platform";
+
+/** What one job source brought. */
+export interface SourceYield {
+  source: string;
+  label: string;
+  requests: number;
+  results: number;
+  new_jobs: number;
+  jobs: number;
+  in_matches: number;
+  applied: number;
+  agent_can_apply: number;
+}
+
 export interface JSearchAnalyticsOut {
   configured: boolean;
   provider: string;
@@ -731,6 +754,8 @@ export interface JSearchAnalyticsOut {
   recent: ApiCallOut[];
   /** Phase 2.6 query lab: what each wording bought. */
   by_wording: WordingYield[];
+  /** Phase 2.7: one row per source. */
+  by_source: SourceYield[];
 }
 
 export interface WordingYield {
@@ -832,6 +857,8 @@ export interface ScanSelection {
   date_posted?: DatePosted;
   /** Query text you typed, per search (query_id -> text); left out = the generated text. */
   query_texts?: Record<number, string>;
+  /** Sources to collect from this time; left out = every enabled source. */
+  sources?: string[];
 }
 
 /** A country for the location picker, with the states / cities we know there. */
@@ -842,6 +869,20 @@ export interface CountryOption {
 }
 
 export type DatePosted = "today" | "3days" | "week" | "month" | "all";
+
+/** One job source in a scan plan (Scan now → Sources). */
+export interface PlanSource {
+  name: string;
+  label: string;
+  kind: string;
+  configured: boolean;
+  enabled: boolean;
+  chosen: boolean;
+  requests: number;
+  summary: string;
+  /** Board systems: the companies it reads (managed by the system). */
+  details: string[];
+}
 
 export interface SearchPlanOut {
   configured: boolean;
@@ -862,6 +903,8 @@ export interface SearchPlanOut {
   after: string[];
   /** Your settings that aren't sent to JSearch, and why. */
   not_sent: string[];
+  /** Every registered source and what this scan will do with it. */
+  sources: PlanSource[];
 }
 
 /** One job a request returned, and what became of it. */
@@ -893,4 +936,53 @@ export interface ApiCallOut {
   relevant_jobs: number;
   error: string | null;
   variant: string | null;
+  /** The source: jsearch | greenhouse | lever | ashby | smartrecruiters. */
+  api: string;
+  /** search | board | feed: how the line is worded. */
+  source_kind: string;
+  source_label: string | null;
+  /** Company boards / feeds: postings the pre-check left out. */
+  skipped_scope: number | null;
+  skipped_title: number | null;
+  scan_id: string | null;
+}
+
+/** Scan Jobs → Company finder (Phase 2.7 E). */
+export interface FinderLeadOut {
+  name: string;
+  kind: string | null;
+  kind_label: string | null;
+  how: string | null;
+  total_jobs: number | null;
+  india_jobs: number | null;
+  matching_jobs: number | null;
+  checked_at: string | null;
+}
+
+export interface FinderStatusOut {
+  enabled: boolean;
+  running: boolean;
+  trigger: string | null;
+  message: string | null;
+  error: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  last_run: Record<string, number>;
+  by_status: Record<string, number>;
+  by_origin: Record<string, number>;
+  crawl: { collection: string | null; hosts: { host: string; pages: number | null; done: number; finished: boolean }[]; leads: number } | null;
+  kept: FinderLeadOut[];
+}
+
+/** Scan Jobs → Scans and what they found: one scan with every request it sent. */
+export interface ScanRequestsOut {
+  /** null = a request sent outside a scan (Admin test, calibration). */
+  scan_id: string | null;
+  trigger: string | null;
+  phase: string | null;
+  started_at: string;
+  finished_at: string | null;
+  error: string | null;
+  totals: Record<string, number>;
+  calls: ApiCallOut[];
 }

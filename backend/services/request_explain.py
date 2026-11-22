@@ -136,11 +136,68 @@ def _plural(n: int, one: str, many: str | None = None) -> str:
     return f"{n} {one if n == 1 else (many or one + 's')}"
 
 
+def _explain_board(session: Session, call: ApiCall) -> CallExplainOut:
+    """A company-board fetch (Phase 2.7 A1): what the board listed and what the pre-check kept."""
+    p = call.params or {}
+    notes = [ParamNote(key="board", value=str(p.get("board", "")),
+                       meaning=f"{p.get('company', 'The company')}'s public job board: every open posting, free.")]
+    if call.status != "ok":
+        return CallExplainOut(params=notes, findings=[f"The board couldn't be read: {call.error or 'unknown error'}."],
+                              suggestions=["Nothing to do: a board that's gone (not found) is switched off by the "
+                                           "system; other errors are retried on the next scan."], history=[])
+    found, scope, title = call.results, call.skipped_scope or 0, call.skipped_title or 0
+    kept = max(0, found - scope - title)
+    findings = [f"The board listed {found} open posting{'s' if found != 1 else ''}.",
+                f"{scope} are outside India (and not remote open to India): left out.",
+                f"{title} more have a title matching none of your roles: left out.",
+                f"{kept} kept; {call.new_jobs} new, {call.relevant_jobs} reached your Matches."]
+    tips = []
+    if found and kept == 0 and scope == found:
+        tips.append("This company has nothing in India right now (a company the app found itself is switched "
+                    "off when that stays so).")
+    elif found and kept == 0:
+        tips.append("India jobs exist but none match your roles: add a role or a search title if one fits.")
+    return CallExplainOut(params=notes, findings=findings, suggestions=tips, history=[])
+
+
+def _explain_feed(session: Session, call: ApiCall) -> CallExplainOut:
+    """A remote-feed request (Phase 2.7 C1): what it listed and what the India + title check kept."""
+    from backend.services.sources import FEEDS
+
+    p = call.params or {}
+    feed = FEEDS.get(call.api)
+    label = feed.label if feed else call.api
+    notes = [ParamNote(key="feed", value=label,
+                       meaning=f"{label}: remote jobs from many companies, free. Only jobs open to candidates in "
+                               "India (worldwide, Asia / APAC or India) are kept.")]
+    if p.get("q"):
+        notes.append(ParamNote(key="q", value=str(p["q"]), meaning="The role searched for (one request per role)."))
+    if call.status != "ok":
+        return CallExplainOut(params=notes, findings=[f"The feed couldn't be read: {call.error or 'unknown error'}."],
+                              suggestions=["Nothing to do: it is tried again on the next scan."], history=[])
+    found, scope, title = call.results, call.skipped_scope or 0, call.skipped_title or 0
+    kept = max(0, found - scope - title)
+    findings = [f"The feed returned {found} remote job{'s' if found != 1 else ''}.",
+                f"{scope} are not open to candidates in India (e.g. “USA only”): left out.",
+                f"{title} more have a title matching none of your roles: left out.",
+                f"{kept} kept; {call.new_jobs} new, {call.relevant_jobs} reached your Matches."]
+    tips = []
+    if found and kept == 0 and scope < found:
+        tips.append("Jobs open to India exist but none match your roles: add a role or a search title if one fits.")
+    return CallExplainOut(params=notes, findings=findings, suggestions=tips, history=[])
+
+
 def explain_call(session: Session, call_id: int) -> CallExplainOut | None:
+    from backend.services.sources import FEEDS
+
     call = session.get(ApiCall, call_id)
     if call is None:
         return None
     params = call.params or {}
+    if call.api in FEEDS:
+        return _explain_feed(session, call)
+    if call.api != "jsearch":
+        return _explain_board(session, call)
     rows = session.exec(select(ApiCallJob).where(ApiCallJob.call_id == call_id).order_by(ApiCallJob.position)).all()
     jobs = {j.id: j for j in session.exec(select(Job).where(col(Job.id).in_([r.job_id for r in rows if r.job_id]))).all()}
     n = len(rows) or call.results

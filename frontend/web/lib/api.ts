@@ -21,6 +21,8 @@ import type {
   JSearchTestOut,
   ProviderUsageOut,
   ApiCallOut,
+  FinderStatusOut,
+  ScanRequestsOut,
   QueryOut,
   SearchPlanOut,
   AdminSettingsOut,
@@ -156,6 +158,7 @@ export const api = {
     if (q.workplace) p.set("workplace", q.workplace);
     if (q.view && q.view !== "matches") p.set("view", q.view);
     if (q.max_years != null) p.set("max_years", String(q.max_years));
+    if (q.apply) p.set("apply", q.apply);
     const qs = p.toString();
     return request<JobsOut>("GET", `/scout/search/jobs${qs ? `?${qs}` : ""}`);
   },
@@ -186,6 +189,9 @@ export const api = {
   getSearchPlan: () => request<SearchPlanOut>("GET", "/scout/search/plan"),
   patchQuery: (id: number, enabled: boolean) => request<QueryOut>("PATCH", `/scout/search/queries/${id}`, { enabled }),
   listApiCalls: (limit = 50) => request<ApiCallOut[]>("GET", `/scout/search/calls?limit=${limit}`),
+  finderStatus: () => request<FinderStatusOut>("GET", "/scout/search/finder"),
+  runFinder: () => request<FinderStatusOut>("POST", "/scout/search/finder/run"),
+  scanRequests: (limit = 10) => request<ScanRequestsOut[]>("GET", `/scout/search/scan-requests?limit=${limit}`),
 
   // Scout / Compass
   remap: () => request<{ remapped: number }>("POST", "/scout/compass/remap"),

@@ -27,6 +27,7 @@ from backend.job_schemas import (
     SearchCriteria,
     SearchPlanOut,
     SourcesSettings,
+    PlanSource,
 )
 from backend.services import api_budget, search_settings
 from backend.services.job_facts import country_name, resolve_place
@@ -388,6 +389,11 @@ def build(session: Session, now: datetime | None = None,
             candidates = due
         else:  # each: every included role, in your order
             candidates = pool
+    jsearch_chosen = not manual or selection.sources is None or JSEARCH.name in selection.sources
+    if manual and selection.sources is not None and not selection.sources:
+        notes.append("No source ticked: tick at least one under Sources.")
+    if not jsearch_chosen:
+        candidates = []
     take = candidates[:allowance] if live else []
     if manual and live and len(candidates) > allowance:
         notes.append(f"Your choice needs {len(candidates)} requests but only {allowance} can be spent today. "
@@ -425,16 +431,53 @@ def build(session: Session, now: datetime | None = None,
     exp_sent = any("job_requirements" in p for _, p in sends)
     shown = "custom" if any(c.custom for c in calls) else wording
     variant = f"{shown} · exp {'on' if exp_sent else 'off'}"
+    from backend.services import employers, remote_feeds
+
+    free = employers.planned(session, selection) + remote_feeds.planned(session, selection)
+    jsearch_ok = not jsearch_chosen or (live and 0 < len(candidates) <= allowance)
     plan = SearchPlanOut(
         configured=configured, enabled=sources.enabled, kind="manual" if manual else "auto", mode=mode,
-        allowance=allowance, fits_budget=not manual or (live and 0 < len(candidates) <= allowance),
+        allowance=allowance, fits_budget=not manual or (jsearch_ok and (len(calls) > 0 or free > 0)),
         calls=calls, queries=[query_out(q) for q in queries], quota=quota, notes=notes, variant=variant,
         not_sent=not_sent(criteria, send_exp),
     )
+    plan.sources = plan_sources(sources, quota, chosen=jsearch_chosen, requests=len(calls),
+                                boards=employers.plan_rows(session, selection) + remote_feeds.plan_rows(session, selection))
     from backend.services import request_explain
 
     request_explain.annotate(session, plan, criteria)
     return plan, sends
+
+
+def plan_sources(cfg: SourcesSettings, quota, *, chosen: bool, requests: int,
+                 boards: list[PlanSource] | None = None) -> list[PlanSource]:
+    """Every registered source with a one-line summary of what this scan will do with it."""
+    from backend.services.sources import SOURCES
+
+    out = []
+    for name, a in SOURCES.items():
+        if name == JSEARCH.name:
+            configured, enabled = JSEARCH.configured(), cfg.enabled
+            if not configured:
+                summary = f"Key missing: add {' and '.join(JSEARCH.env_keys)} to .env"
+            elif not enabled:
+                summary = "Switched off in Admin → JSearch"
+            elif not chosen:
+                summary = "Skipped this scan"
+            elif quota.blocked_until:
+                summary = "Paused after “too many requests” until tomorrow"
+            else:
+                left = "no daily limit" if not quota.daily_limit_on else f"{quota.today_allowance} left today"
+                summary = f"{requests} request{'s' if requests != 1 else ''} · {left}"
+            out.append(PlanSource(name=name, label=a.label, kind=a.kind, configured=configured, enabled=enabled,
+                                  chosen=chosen and configured and enabled, requests=requests if chosen else 0,
+                                  summary=summary))
+        elif a.kind in ("board", "feed"):  # one tick box per board system / feed (rows built by their modules)
+            out += [b for b in boards or [] if b.name == name]
+        else:  # registered but not wired into scans yet (Phase 2.7 builds them one by one)
+            out.append(PlanSource(name=name, label=a.label, kind=a.kind, configured=a.configured(), enabled=False,
+                                  chosen=False, requests=0, summary="Not part of scans yet"))
+    return out
 
 
 # ── after the calls ────────────────────────────────────────────────────────────

@@ -110,3 +110,29 @@ export const WORDING_HINT: Record<QueryWording, string> = {
   titles: "(\"AI Engineer\" OR \"Machine Learning Engineer\") in India: the role's search titles from Memory ▾ Role contexts.",
   titles_keywords: "The title group plus the role's first keyword (e.g. Python): narrower, more on-profile.",
 };
+
+/** How a job can be applied to, in words (jobs.apply_route). */
+export const APPLY_KIND_LABEL: Record<string, string> = {
+  form: "Agent can apply",
+  direct: "Employer site",
+  account: "Account needed",
+  aggregator: "Job board",
+  platform: "Login platform",
+};
+const APPLY_NAMES: Record<string, string> = {
+  greenhouse: "Greenhouse", lever: "Lever", ashby: "Ashby", smartrecruiters: "SmartRecruiters", workable: "Workable",
+  recruitee: "Recruitee", workday: "Workday", taleo: "Taleo", successfactors: "SuccessFactors", icims: "iCIMS",
+  oracle: "Oracle", linkedin: "LinkedIn", naukri: "Naukri", indeed: "Indeed", glassdoor: "Glassdoor",
+  internshala: "Internshala", foundit: "foundit", instahyre: "Instahyre", wellfound: "Wellfound", shine: "Shine",
+  apna: "apna", hirist: "hirist", cutshort: "Cutshort", iimjobs: "iimjobs", timesjobs: "TimesJobs", jooble: "Jooble",
+  "talent.com": "Talent.com", kitjob: "Kit Job", jaabz: "Jaabz", jobrapido: "Jobrapido", simplyhired: "SimplyHired",
+  jobleads: "JobLeads", careerjet: "Careerjet", adzuna: "Adzuna", prosple: "Prosple",
+};
+
+/** "form:greenhouse" -> { kind: "form", label: "Agent can apply · Greenhouse" }. */
+export function applyRoute(route: string | null | undefined): { kind: string; label: string } | null {
+  if (!route) return null;
+  const [kind, name] = route.split(":");
+  const base = APPLY_KIND_LABEL[kind] ?? kind;
+  return { kind, label: name ? `${base} · ${APPLY_NAMES[name] ?? name}` : base };
+}

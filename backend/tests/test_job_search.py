@@ -11,6 +11,7 @@ from sqlmodel import delete, select
 from backend import vectors
 from backend.config import get_settings, get_tuning, write_tuning
 from backend.db import (
+    Employer,
     ApiCall, ApiCallJob, AppSetting, FetchRun, Job, JobLedger, JobRequirement, JobSource, MemoryCard, RoleContext, Scan,
     SearchQuery, get_profile_row, init_db, new_session, utcnow,
 )
@@ -97,7 +98,7 @@ def nj(source, sid, title, html, company="Acme Widgets", location="Remote", **kw
 def env(monkeypatch):
     init_db()
     with new_session() as s:
-        for model in (JobRequirement, Job, JobLedger, FetchRun, Scan, JobSource, AppSetting, MemoryCard, ApiCall, ApiCallJob, SearchQuery):
+        for model in (JobRequirement, Job, JobLedger, FetchRun, Scan, JobSource, AppSetting, MemoryCard, ApiCall, ApiCallJob, SearchQuery, Employer):
             s.exec(delete(model))
         row = get_profile_row(s)
         row.data, row.memory_built_at = fake_profile().model_dump(), None

@@ -161,7 +161,8 @@ class JSearchError(SourceError):
 class JSearchClient:
     name = "jsearch"
     label = "JSearch"
-    kind: Literal["feed", "ats"] = "feed"
+    kind: Literal["search"] = "search"
+    quota = True
     terms_url = "https://www.openwebninja.com/terms"
     env_keys = ("JSEARCH_API_KEY",)
 
@@ -240,6 +241,7 @@ class JSearchClient:
             job_url=_best_link(rec),
             source_published_at=parse_datetime(rec.get("job_posted_at_datetime_utc") or rec.get("job_posted_at_timestamp")),
             highlights=_highlights(rec.get("job_highlights")),
+            apply_links=apply_links(rec),
             raw=rec,
         )
 
@@ -261,6 +263,18 @@ def _rows(data) -> list | None:
     if isinstance(d, dict) and isinstance(d.get("jobs"), list):
         return d["jobs"]
     return None
+
+
+def apply_links(rec: dict | None) -> list[dict]:
+    """Every apply link in a JSearch record: [{"url", "direct"}] (apply_options + the main one)."""
+    out: list[dict] = []
+    for opt in (rec or {}).get("apply_options") or []:
+        if isinstance(opt, dict) and clean_str(opt.get("apply_link")):
+            out.append({"url": clean_str(opt.get("apply_link")), "direct": opt.get("is_direct") is True})
+    main = clean_str((rec or {}).get("job_apply_link"))
+    if main and all(x["url"] != main for x in out):
+        out.append({"url": main, "direct": (rec or {}).get("job_apply_is_direct") is True})
+    return out
 
 
 def _best_link(rec: dict) -> str | None:

@@ -11,6 +11,7 @@ import { PHASE_LABEL, clockTime, dateTime, plural, valueLabel } from "../compone
 import { QuotaMeter } from "../components/jobs/SearchPlan";
 import { ScanPicker } from "../components/jobs/ScanPicker";
 import { RequestResults } from "../components/jobs/RequestResults";
+import { CompanyFinder } from "../components/jobs/CompanyFinder";
 import { JobDetailPanel } from "../components/jobs/JobDetailPanel";
 
 const FUNNEL: { key: string; label: string }[] = [
@@ -345,7 +346,8 @@ function SourcesHealth({ data }: { data: OverviewOut }) {
                   <tr key={s.name} className={cx(!s.enabled && "opacity-55")}>
                     <td className="px-4 py-2.5">
                       <span className="text-zinc-900 dark:text-zinc-100">{s.label}</span>
-                      {s.kind === "ats" && <span className="ml-1.5 text-[11px] text-zinc-400">ATS</span>}
+                      {s.kind === "board" && <span className="ml-1.5 text-[11px] text-zinc-400">company boards</span>}
+                      {s.kind === "feed" && <span className="ml-1.5 text-[11px] text-zinc-400">remote feed</span>}
                       {failing && (
                         <p className="mt-0.5 max-w-xs truncate text-xs text-rose-600/80 dark:text-rose-400/80" title={s.last_error ?? undefined}>
                           {s.last_error}
@@ -366,45 +368,9 @@ function SourcesHealth({ data }: { data: OverviewOut }) {
   );
 }
 
-function RecentScans({ scans, error, onRetry }: { scans: ScanOut[] | null; error: string | null; onRetry: () => void }) {
-  return (
-    <div>
-      <SectionHead title="Recent scans" />
-      {error && <ErrorBanner message={error} onRetry={onRetry} />}
-      {!scans && !error && <Skeleton className="h-24" />}
-      {scans && scans.length === 0 && <p className="text-sm text-zinc-500">No scans yet.</p>}
-      {scans && scans.length > 0 && (
-        <Card>
-          <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
-            {scans.slice(0, 10).map((s) => (
-              <li key={s.scan_id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3">
-                <span className="text-sm text-zinc-900 tabular-nums dark:text-zinc-100">{dateTime(s.started_at)}</span>
-                <Badge tone={s.trigger === "auto" ? "neutral" : "accent"}>{s.trigger}</Badge>
-                {s.phase === "done" ? (
-                  <span className="text-xs text-zinc-500">Done</span>
-                ) : s.phase === "failed" ? (
-                  <span className="text-xs text-rose-600/80 dark:text-rose-400/80" title={s.error ?? undefined}>
-                    Failed{s.error ? `: ${s.error}` : ""}
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1.5 text-xs text-zinc-500">
-                    <Spinner className="size-3" /> {PHASE_LABEL[s.phase]}
-                  </span>
-                )}
-                <Totals totals={s.totals} className="w-full" />
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
-    </div>
-  );
-}
-
 export default function JobSearchOverview() {
   const toast = useToast();
   const overview = useResource(api.searchOverview, { pollMs: 2000, shouldPoll: (o) => !!o.running });
-  const scans = useResource(api.listScans);
   const [schedule, setSchedule] = useState<ScheduleSettings | null>(null);
   const [toggling, setToggling] = useState(false);
 
@@ -422,13 +388,12 @@ export default function JobSearchOverview() {
     if (!data) return;
     const running = !!data.running;
     if (wasRunning.current && !running) {
-      void scans.reload();
       void calls.reload();
       const last = data.last_scan;
       if (last?.phase === "failed") toast.error("Scan failed", last.error ?? undefined);
       else if (last) toast.success("Scan finished", `${last.totals.new ?? 0} new · ${last.totals.relevant ?? 0} relevant`);
     }
-    if (!wasRunning.current && running) void scans.reload();
+    if (!wasRunning.current && running) void calls.reload();
     wasRunning.current = running;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
@@ -437,7 +402,7 @@ export default function JobSearchOverview() {
 
   const [picking, setPicking] = useState(false);
   const [openJob, setOpenJob] = useState<number | null>(null);
-  const calls = useResource(() => api.listApiCalls(20));
+  const calls = useResource(() => api.scanRequests(10));
   const started = (s: ScanOut) => {
     overview.setData((o) => (o ? { ...o, running: s } : o));
     void overview.reload();
@@ -525,8 +490,8 @@ export default function JobSearchOverview() {
           <PerDayChart data={data.per_day} labels={labels} />
           <Breakdown breakdown={data.breakdown} />
           <SourcesHealth data={data} />
-          <RequestResults calls={calls.data} error={calls.error} onRetry={calls.reload} onOpenJob={setOpenJob} />
-          <RecentScans scans={scans.data} error={scans.error} onRetry={scans.reload} />
+          <CompanyFinder />
+          <RequestResults scans={calls.data} error={calls.error} onRetry={calls.reload} onOpenJob={setOpenJob} />
 
           {(data.funnel.relevant ?? 0) > 0 && (
             <p className="mt-8 text-sm text-zinc-500">

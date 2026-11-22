@@ -38,6 +38,13 @@ def _recover() -> None:
         settings_effects.sync_config(force=True)  # config.toml edited while the app was down
         job_search.reapply_criteria_if_needed()  # what the criteria exclude changed (e.g. location, 2026-11-20)
         job_search.rescore_titles_if_needed()  # title scoring method changed since last start
+        job_search.apply_routes_if_needed()  # apply-route rules changed (Phase 2.7)
+        from backend.services import employers
+
+        employers.sync_starter()  # the system-managed company list (Phase 2.7 A2)
+        from backend.services import company_finder
+
+        company_finder.recover()  # seed list of companies to check (Phase 2.7 E)
         job_search.backfill_call_jobs()  # requests made before api_call_jobs existed
         role_contexts.ensure_for_roles()  # roles without a role context get one (model calls)
         job_search.reembed_jobs_if_needed()  # the embedded job text changed (Phase 2.6)

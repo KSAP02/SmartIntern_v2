@@ -1,4 +1,11 @@
-"""Shared plumbing for the job source client(s): one HTTP helper, errors, field helpers.
+"""Shared plumbing for job sources: the source contract, one HTTP helper, errors, field helpers.
+
+**Source contract (Phase 2.7).** A source is one module in this package exposing an adapter
+object with `name`, `label`, `kind`, `quota`, `terms_url`, `env_keys` and `configured()`, listed
+in `sources.SOURCES`. Search sources (kind "search") take a query and run inside the search plan
+and request budget; board / feed / page sources return everything and are pre-checked (India
+scope + title) before storing. Every adapter returns `NormalizedJob`s. Adding a source = one
+file + one registry line + its config section.
 
 Clients are read-only callers of documented APIs. They return `NormalizedJob`s and never
 convert HTML to text (another module does that). Nothing about the user is sent beyond the
@@ -9,11 +16,26 @@ from __future__ import annotations
 import time
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
-from typing import Any
+from typing import Any, Literal, Protocol
 
 import httpx
 
 USER_AGENT = "SmartIntern/0.1 (personal job search)"  # generic on purpose: no name, no email
+
+SourceKind = Literal["search", "board", "feed", "page"]
+
+
+class SourceAdapter(Protocol):
+    """What every job source exposes (see the module docstring)."""
+
+    name: str  # registry key, also api_calls.api and jobs.seen_on[].source
+    label: str  # shown to the user
+    kind: SourceKind
+    quota: bool  # metered: every request goes through api_budget
+    terms_url: str | None
+    env_keys: tuple[str, ...]  # keys it needs in .env (empty = none)
+
+    def configured(self) -> bool: ...
 MAX_RETRY_WAIT = 30.0  # seconds; caps Retry-After and backoff
 
 

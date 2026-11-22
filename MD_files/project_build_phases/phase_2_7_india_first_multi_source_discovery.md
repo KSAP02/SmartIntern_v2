@@ -173,8 +173,11 @@ existing 2.6 matching → Matches / Not relevant
 | A0 | Source contract + registry; JSearch moved onto it unchanged; budget per source; per-source analytics; Scan now source ticks (one button for all); **apply route** for every job (JSearch's `apply_options` classified) + "Agent can apply" filter | 0 |
 | A1 | `employers` table + Companies page (paste a careers link → ATS + board id); Greenhouse, Lever, Ashby, SmartRecruiters adapters; India scope + title pre-check | 0 (fake responses) |
 | A2 | Starter company list (draft → your check); research which ATSs need accounts (D5) | your clicks |
-| B1 | Jooble adapter + `api_references/jooble.md` | 0 in build; you run the first live one |
-| C1 | Remote feeds with the open-to-India check | 0 (fake responses) |
+| B1 | Jooble adapter + `api_references/jooble.md` — **parked 2026-11-22** (user): an aggregator gives few jobs the agent can apply to | — |
+| A3 | Find companies automatically from stored jobs' apply links (built 2026-11-22) | 0 |
+| A4 | Workable + Recruitee boards (built 2026-11-22); Rippling researched, **not built** (apply flow unconfirmed) | 0 (fake responses) |
+| C1 | Remote feeds with the open-to-India check (built 2026-11-22: Himalayas, RemoteJobs.org, Remotive) | 0 (fake responses) |
+| E | **Company finder** (seed list + careers pages + name guesses + Common Crawl index), Indian boards Keka / Darwinbox / Zoho Recruit, board read schedule, SmartRecruiters India filter, JSearch "new since last run" default, one row per scan in the request log (built 2026-11-22) | 0 (fake responses); finder runs are the user's |
 | — | **You:** scan with the enabled sources, read the per-source table (incl. share of `form:` jobs) | your choice |
 
 ## Acceptance
@@ -197,3 +200,172 @@ existing 2.6 matching → Matches / Not relevant
 - Phase 3: an agent that selects like you (LLM judge per job, shadow mode first). Phases 4–6:
   applying, `ats:*` routes first; never bypass CAPTCHAs / bot checks, never automate LinkedIn /
   Naukri / Indeed.
+
+---
+
+## Build notes
+
+### A0 built 2026-11-20
+
+- **Source contract + registry:** `sources/base.py` `SourceAdapter` (name, label, kind
+  search|board|feed|page, quota, terms_url, env_keys, configured()); `sources.SOURCES` (JSearch
+  only; `ADAPTERS` kept as an alias). JSearch's scan flow unchanged.
+- **Budget per source:** `api_budget.quota / reserve_call / recent_calls / blocked_until` take
+  `api` (default `jsearch`); JSearch-only parts (billing period and remaining quota from OpenWeb
+  Ninja) apply to JSearch only.
+- **Apply route:** `services/apply_route.py` (host rules: form = Greenhouse, Lever, Ashby +
+  SmartRecruiters, Workable, Recruitee *to verify in A2*; account = Workday, Taleo,
+  SuccessFactors, iCIMS, Oracle; platforms = LinkedIn, Naukri, Indeed, Glassdoor, Internshala,
+  foundit, Instahyre, Wellfound, Shine, apna, hirist, Cutshort, iimjobs, TimesJobs; known
+  aggregators; employer site = the source says direct or the company name is in the host; else
+  aggregator). `NormalizedJob.apply_links`; JSearch fills it from `apply_options` +
+  `job_apply_link`. Stored on `jobs.apply_route` / `apply_route_url`; best route kept; start-up
+  re-derivation (`apply_routes_if_needed`, meta `apply_route_version`).
+- **Jobs page:** "Apply via" filter (`GET /jobs?apply=form|direct|account|aggregator|platform`),
+  a route badge on each row (green for "Agent can apply"), "How to apply" line in the job panel.
+- **Scan now:** a Sources list (`SearchPlanOut.sources` / `PlanSource`): each source ticked by
+  default with a one-line summary; `ScanSelection.sources` (None = all enabled; [] = nothing,
+  refused).
+- **Analytics:** JSearch analytics → "By source" (`by_source` / `SourceYield`: requests,
+  returned, new, jobs, in Matches, applied, agent can apply).
+- Tests: `test_sources_a0.py` (8); backend 197 green.
+- Live labelling of the 81 stored jobs: 46 job board (Jooble 22, Shine…), 27 login platform
+  (LinkedIn 10…), 8 employer site, **0 company forms**: JSearch alone gives the agent nothing to
+  apply to, which is what A1 (company boards) is for.
+
+### A1 + A2 built 2026-11-20
+
+- **Companies:** `employers` table; Search Settings → **Companies** (paste a careers link → ATS +
+  board id via `sources.parse_careers_url`; switch on/off; **Check** reads the board once and
+  says found / in India / would keep, storing nothing; remove; "Add starter list").
+  API `/api/scout/search/companies` (GET, POST, PATCH, DELETE, `/{id}/check`, `/starter`).
+- **Adapters** (kind `board`, free): `sources/greenhouse.py` (+ EU boards), `lever.py`,
+  `ashby.py`, `smartrecruiters.py` (details only for pre-checked jobs), base `sources/boards.py`;
+  registered in `sources.SOURCES` / `BOARDS`. Reference: `api_references/ats_boards.md`.
+- **Pre-check** (`services/employers.precheck`): India or remote open to India (unknown kept,
+  via `job_facts.location_match(["IN"], …)`) AND the title contains every distinctive word of a
+  role or one of its search titles (abbreviations expanded; back-end = backend). No roles = all.
+- **Scan:** `employers.collect` after JSearch: every switched-on company, `delay_seconds` apart;
+  each board read logged in `api_calls` (api = ATS) with `skipped_scope` / `skipped_title`;
+  stored like any job (dedupe, title gate, role context); postings gone from their board →
+  expired. Scan now: one **Companies** row ("check N companies · free"), can be unticked; a
+  scan may be companies-only. Requests and what they found + "Why these results" cover board
+  reads. Config `[scout.search.boards]`: enabled, delay_seconds, timeout_seconds,
+  max_details_per_board.
+- **A2:** starter list of **34 companies** (12 Greenhouse, 9 Lever, 8 Ashby, 5 SmartRecruiters)
+  from web search, each board URL seen in results, none fetched; added switched off.
+  Research (account needed? CAPTCHA? India-common ATSs) in `api_references/ats_boards.md`;
+  `apply_route` rules updated (Greenhouse EU hosts). No adapter for Zoho Recruit / Keka /
+  Darwinbox / Freshteam (HTML-only or unverified); Rippling ATS is the best next board candidate.
+- Tests: `test_boards_a1.py` (9); the shared test setup now clears companies (a leftover company
+  made later test scans try a real board once during development; fixed). Backend 205 green.
+
+### Changed 2026-11-20 (user): the system manages the companies
+
+*"We don't want to give the user the power to decide on job boards; let the system take care.
+It should be a tick box like for JSearch, so the user knows where jobs are fetched from and can
+decide during the scan."*
+
+- Search Settings → Companies removed (the API stays, unused by the UI).
+- The starter list is the system's company list: added **switched on** on start
+  (`employers.sync_starter`, meta `starter_companies_version`); a board that answers "not found"
+  is switched off by the system and stays off.
+- Scan now → Sources: **one tick box per source** (JSearch, Greenhouse, Lever, Ashby,
+  SmartRecruiters), each board showing "N companies · free" and the company names;
+  `ScanSelection.sources` takes these names. The Scan button reads "Scan (1 request + 34 companies)".
+- Tests: company boards are off in the test config (conftest) and switched on only by tests that
+  fake every board. Backend 206 green.
+
+### A3 + A4 + C1 built 2026-11-22
+
+User (2026-11-22): leave Jooble out for now; build the rest; research Rippling and build it only
+if the agent can apply without an account, otherwise report the caveats.
+
+- **A3 — companies found automatically** (`employers.discover`, run in every scan after the
+  searches and feeds, before the boards): every stored job's links (best apply link, apply /
+  posting URL, `seen_on` URLs, JSearch `apply_options` while the raw record is kept) go through
+  `sources.parse_careers_url`; a board we read that isn't in `employers` is added
+  (`origin = "discovered"`, `found_via_job_id`, note "Found through ..."), at most
+  `max_new_per_scan` (10) per scan. Nothing is fetched to find them. Its first board read in the
+  same scan is the check: no job in India -> switched off at once; later, no India jobs for
+  `drop_after_empty_scans` (3) scans in a row -> switched off. A switched-off found company is
+  tried again after `retry_after_days` (30) if a job links to it again; a board that's gone
+  (404) never. Scan totals `companies_found` / `companies_dropped`. Scan now's board rows say
+  "N companies (M found by the app) · free". Config `[scout.search.boards]` discover,
+  max_new_per_scan, drop_after_empty_scans, retry_after_days. DB `employers.found_via_job_id`,
+  `empty_scans`.
+- **A4 — Workable + Recruitee boards** (`sources/workable.py`, `recruitee.py`, kind board):
+  Workable v1 widget `apply.workable.com/api/v1/widget/accounts/{sub}?details=true` (in
+  Workable's help centre); Recruitee Careers Site API `{company}.recruitee.com/api/offers/`
+  (documented). No starter companies on them: they fill up through A3. **Recruitee caveat:**
+  from 10 Feb 2027 that API needs the company's own token (401 without it); then reads fail and
+  Recruitee needs another route (careers page / XML feed). Research: `api_references/ats_boards.md`.
+- **Rippling: not built.** A keyless jobs JSON exists (`api.rippling.com/platform/api/ats/v2/board/{slug}/jobs`)
+  but is undocumented, needs a detail call per job, slugs are case-sensitive and often hidden
+  behind custom careers domains, and whether its apply form needs an account / has a CAPTCHA
+  could not be confirmed. Revisit when Phase 6 (applying) can test one form by hand.
+- **C1 — remote feeds** (`sources/feeds.py` base, `himalayas.py`, `remotejobs.py`,
+  `remotive.py`, kind feed; `services/remote_feeds.py`): one tick box each in Scan now under
+  "Remote feeds · open to India". Himalayas and RemoteJobs.org: one request per role of the
+  scan (`max_queries_per_feed` 5) with `country=IN` on their side; Remotive: one request for its
+  software category, at most every 8 h (its terms). Each feed's own eligibility field decides
+  "open to India" (Himalayas `locationRestrictions` empty or with IN; RemoteJobs.org
+  `location_normalization`; Remotive `candidate_required_location` free text: worldwide /
+  anywhere / Asia / APAC / India), then the title pre-check. Logged in `api_calls`; "Why these
+  results" for feeds. A feed link to an ATS form makes a `form:<ats>` job **and** feeds A3.
+  Skipped: Jobicy (India not a geo option; endpoint changing), We Work Remotely (terms forbid
+  storing), Remote OK (location mostly empty), Working Nomads (no docs / terms). Reference:
+  `api_references/remote_feeds.md`. Config `[scout.search.feeds]`.
+- **Credit:** the job panel's "Seen on" shows the source's name linking to its job page (the
+  feeds' terms ask for a visible credit + link back).
+- Request log rows carry `source_kind` / `source_label` (search | board | feed); Scan now groups
+  its Sources list (Job search / Company boards / Remote feeds); the Scan button reads
+  "Scan (N requests + M companies + K feed reads)".
+- Tests: `test_discovery_a3.py` (4), `test_feeds_c1.py` (6); feeds off in the test config.
+  Backend 216 green. Feed and Workable / Recruitee response shapes come from docs and
+  open-source code, **not verified live**: the user's first scan is the check. (Feeds verified by
+  the user's scan of 2026-11-22 12:50: Himalayas 20 listed / 5 kept, RemoteJobs.org 50 / 9,
+  Remotive 16 / 1.)
+
+### E built 2026-11-22: finding companies, Indian boards, a leaner fetch
+
+User (2026-11-22): boards only cover companies we know; we need companies all over India; find
+them, fetch only relevant jobs, don't waste calls; legal and free; research first; build steps
+1–4 (research, company finding, Indian systems, fetch efficiency); no deploy / push until tested
+on localhost. Recommendations taken: finder runs in the background (and after each scan), ~300+
+seed companies, Common Crawl included.
+
+- **Research** (`api_references/indian_ats.md`, `common_crawl.md`): Keka, Darwinbox, Zoho Recruit
+  have keyless public job lists that robots allows, but every application form has a CAPTCHA or
+  OTP → built **for finding only** (apply route `account:<kind>`, "you apply" in Scan now).
+  Freshteam is being retired (skipped); TurboHire no public pattern. Common Crawl's CDX index is
+  free, its terms allow it (no personal data taken), heavily rate limited.
+- **Company finder** (`services/company_finder.py`, table `company_leads`): leads from the seed
+  list (`services/seed_companies.csv`: 407 Indian unicorns, startups, product companies and
+  global companies with Indian engineering; compiled from Wikipedia / YC / public lists, domains
+  partly from memory — a wrong one only means no board is found) and from the Common Crawl index
+  (`services/crawl_index.py`: board addresses under each system's host, a few index pages per
+  run, position kept in `meta`). Per lead, cheapest first: board already known → the company's
+  careers page (robots.txt honoured; links, iframes and scripts searched for a board link) → its
+  name tried on each system (greenhouse, lever, ashby, keka, darwinbox, workable,
+  smartrecruiters, recruitee; ≥ 4-character ids only). The board is read once with the scan's
+  pre-check: jobs in India → an `employers` row (origin discovered) that every scan reads; else
+  re-checked after 30 days (no board: 90). Background thread; one request at a time with a delay;
+  stores no jobs (the next scan does). Scan Jobs → **Company finder** card: status, counts,
+  web-index progress, companies kept, **Find companies**. Starts after every scan
+  (`run_after_scan`). Config `[scout.search.finder]`. API `GET /api/scout/search/finder`,
+  `POST .../finder/run`.
+- **Fetch efficiency:** boards with no job matching your roles are read weekly, not every scan
+  (`employers.next_read_at`, `quiet_board_days` 7; all due again when your roles change; Scan now
+  says "N more read weekly"); SmartRecruiters asks for `country=in` only; Lever's location filter
+  is exact-match only (not used). Change detection (ETag / 304) researched but unverified →
+  not used. JSearch: Scan now's Date posted defaults to **"New since this search last ran"**
+  (the automatic-scan window), so a manual request doesn't re-fetch jobs already found.
+- **Request log:** "Scans and what they found" = one row per scan (`GET .../scan-requests`), its
+  requests grouped JSearch / each board system with its companies / feeds; "Recent scans"
+  removed.
+- Tests: `test_finder_e.py` (8) with trimmed real Keka / Darwinbox / Zoho responses
+  (`tests/fixtures/indian_ats/`); finder off in the test config. Backend 224 green.
+- **Not verified live:** the finder's careers-page reading and name guessing against real sites,
+  and the Common Crawl paging (its server answered 504 during research). The user's first
+  **Find companies** run is the check.

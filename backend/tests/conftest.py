@@ -15,6 +15,18 @@ os.environ["SNAPSHOT_DIR"] = os.path.join(os.environ["DATA_DIR"], "snapshots")
 _cfg = os.path.join(os.environ["DATA_DIR"], "config.toml")
 shutil.copyfile(os.path.join(os.path.dirname(__file__), "..", "..", "settings", "config.toml"), _cfg)
 os.environ["CONFIG_FILE"] = _cfg
+# Company job boards are real public APIs: off in tests, so a scan never reads a real board. Tests
+# that need boards switch them on and fake every board's answer (test_boards_a1.py).
+with open(_cfg, encoding="utf-8") as _f:
+    _text = _f.read()
+# Remote feeds (Himalayas, RemoteJobs.org, Remotive) and the company finder likewise: off, faked
+# where tested (test_feeds_c1.py, test_finder_e.py).
+for _section in ("[scout.search.boards]", "[scout.search.feeds]", "[scout.search.finder]"):
+    _i = _text.index(_section)
+    _j = _text.index("enabled = true", _i)
+    _text = _text[:_j] + "enabled = false" + _text[_j + len("enabled = true"):]
+with open(_cfg, "w", encoding="utf-8") as _f:
+    _f.write(_text)
 
 from backend.schemas import Profile  # noqa: E402
 

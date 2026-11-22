@@ -7,9 +7,14 @@ from sqlmodel import Session, col, select
 from backend.db import Job, Scan, SearchQuery, get_session, utcnow
 from backend.job_schemas import (
     ApiCallOut,
+    ApplyKind,
     AutoscanToggle,
     CallExplainOut,
     CountryOption,
+    EmployerAdd,
+    EmployerCheckOut,
+    EmployerOut,
+    EmployerPatch,
     CallJobOut,
     JobCard,
     JobDetail,
@@ -24,6 +29,8 @@ from backend.job_schemas import (
     RoleAdd,
     ScanSelection,
     ScanOut,
+    ScanRequestsOut,
+    FinderStatusOut,
     ScheduleSettings,
     SearchPlanOut,
     SearchSettings,
@@ -78,10 +85,12 @@ def autoscan(body: AutoscanToggle, session: Session = Depends(get_session)):
 
 @router.get("/jobs", response_model=JobsOut)
 def jobs(q: str | None = None, category: str | None = None, workplace: str | None = None,
-         view: JobsView = "matches", max_years: float | None = None, session: Session = Depends(get_session)):
+         view: JobsView = "matches", max_years: float | None = None, apply: ApplyKind | None = None,
+         session: Session = Depends(get_session)):
     """One Jobs-page tab: matches (undecided relevant; fits / other), selected, applied,
     discarded, not_relevant, excluded."""
-    return job_views.list_jobs(session, q=q, category=category, workplace=workplace, view=view, max_years=max_years)
+    return job_views.list_jobs(session, q=q, category=category, workplace=workplace, view=view, max_years=max_years,
+                               apply=apply)
 
 
 @router.post("/jobs/decide", response_model=dict)
@@ -240,9 +249,105 @@ def api_call_jobs(call_id: int, session: Session = Depends(get_session)):
     return out
 
 
+@router.get("/finder", response_model=FinderStatusOut)
+def finder_status(session: Session = Depends(get_session)):
+    """Scan Jobs -> Company finder: what it has checked and kept (Phase 2.7 E)."""
+    from backend.services import company_finder
+
+    return company_finder.status(session)
+
+
+@router.post("/finder/run", response_model=FinderStatusOut, status_code=202)
+def finder_run(session: Session = Depends(get_session)):
+    """Start a company-finder run in the background (free: public pages and boards only)."""
+    from backend.services import company_finder
+
+    if not company_finder.settings().enabled:
+        raise HTTPException(400, "The company finder is switched off ([scout.search.finder] enabled = false).")
+    if not company_finder.start("manual"):
+        raise HTTPException(409, "The company finder is already running.")
+    return company_finder.status(session)
+
+
+@router.get("/scan-requests", response_model=list[ScanRequestsOut])
+def scan_requests(limit: int = 10, session: Session = Depends(get_session)):
+    """Scan Jobs → Requests: the last scans, each with every request it sent, newest first."""
+    return jsearch_analytics.scan_history(session, max(1, min(limit, 50)))
+
+
 @router.get("/calls", response_model=list[ApiCallOut])
 def api_calls(limit: int = 50, session: Session = Depends(get_session)):
-    """Recent JSearch requests (newest first)."""
+    """Recent requests to every source (JSearch + company boards), newest first."""
     texts = jsearch_analytics.query_texts(session)
-    return [jsearch_analytics.call_out(c, texts) for c in api_budget.recent_calls(session, max(1, min(limit, 500)))]
+    return [jsearch_analytics.call_out(c, texts) for c in api_budget.recent_calls(session, max(1, min(limit, 500)), api=None)]
+
+
+# ── Companies (company job boards, Phase 2.7 A1) ─────────────────────────────────
+
+
+def _employer(session: Session, employer_id: int):
+    from backend.db import Employer
+
+    e = session.get(Employer, employer_id)
+    if e is None:
+        raise HTTPException(404, "Company not found")
+    return e
+
+
+@router.get("/companies", response_model=list[EmployerOut])
+def companies(session: Session = Depends(get_session)):
+    """Your companies: their job boards are collected on every scan while switched on."""
+    from backend.services import employers
+
+    return [employers.out(e) for e in employers.list_all(session)]
+
+
+@router.post("/companies", response_model=EmployerOut)
+def company_add(body: EmployerAdd, session: Session = Depends(get_session)):
+    """Add a company from its careers / board link (Greenhouse, Lever, Ashby, SmartRecruiters)."""
+    from backend.services import employers
+
+    try:
+        return employers.out(employers.add(session, body.url, body.name))
+    except employers.EmployerError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@router.post("/companies/starter", response_model=list[EmployerOut])
+def company_starter(session: Session = Depends(get_session)):
+    """Add the drafted starter companies you don't have yet, switched off."""
+    from backend.services import employers
+
+    return [employers.out(e) for e in employers.add_starter(session)]
+
+
+@router.patch("/companies/{employer_id}", response_model=EmployerOut)
+def company_patch(employer_id: int, body: EmployerPatch, session: Session = Depends(get_session)):
+    from backend.services import employers
+
+    e = _employer(session, employer_id)
+    if body.enabled is not None:
+        e.enabled = body.enabled
+    if body.name is not None:
+        e.name = body.name.strip()
+    session.add(e)
+    session.commit()
+    session.refresh(e)
+    return employers.out(e)
+
+
+@router.delete("/companies/{employer_id}")
+def company_delete(employer_id: int, session: Session = Depends(get_session)):
+    """Remove a company (jobs already collected from it stay)."""
+    session.delete(_employer(session, employer_id))
+    session.commit()
+    return {"ok": True}
+
+
+@router.post("/companies/{employer_id}/check", response_model=EmployerCheckOut)
+def company_check(employer_id: int, session: Session = Depends(get_session)):
+    """Read the company's board now (one free request) and say what a scan would keep. Stores no jobs."""
+    from backend.services import employers
+
+    return employers.check(session, _employer(session, employer_id))
 

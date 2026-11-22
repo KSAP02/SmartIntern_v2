@@ -172,6 +172,74 @@ class ApiCallJob(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utcnow)
 
 
+class Employer(SQLModel, table=True):
+    """A company whose public job board is collected on every scan (Phase 2.7 A1): Search
+    Settings -> Companies. The board is read from its careers link."""
+
+    __tablename__ = "employers"
+
+    id: int | None = Field(default=None, primary_key=True)
+    name: str
+    kind: str = Field(index=True)  # greenhouse | lever | ashby | smartrecruiters (= the source's name)
+    board: str  # the board id in the ATS, e.g. "postman" (boards.greenhouse.io/postman)
+    careers_url: str | None = None  # what you pasted
+    enabled: bool = True  # collected on scans; the system switches it off (board gone / no India jobs)
+    # you | starter (drafted list, Phase 2.7 A2) | discovered (found in a job's apply link, A3)
+    origin: str = "you"
+    note: str | None = None  # e.g. why it's on the starter list / which job it was found through
+    found_via_job_id: int | None = None  # discovered: the job whose link pointed to this board
+    # discovered: scans in a row whose board had no job in India (None = not read yet); at
+    # [scout.search.boards] drop_after_empty_scans the system switches the company off.
+    empty_scans: int | None = None
+    added_at: datetime = Field(default_factory=utcnow)
+    last_checked_at: datetime | None = None
+    last_error: str | None = None
+    last_found: int | None = None  # postings on the board at the last check / scan
+    last_in_scope: int | None = None  # of those, in India or remote open to India
+    last_kept: int | None = None  # of those, with a title matching your roles
+    # Phase 2.7 E (read schedule): a board with no job matching your roles at its last read is
+    # "quiet" and read again only from this time ([scout.search.boards] quiet_board_days);
+    # None = read on every scan.
+    next_read_at: datetime | None = None
+    # Change detection (only for boards that send them): the board's ETag / Last-Modified at the
+    # last read; an unchanged board (HTTP 304) is not re-processed.
+    etag: str | None = None
+    last_modified: str | None = None
+
+
+class CompanyLead(SQLModel, table=True):
+    """A company the company finder may check (Phase 2.7 E). Leads come from the seed list of
+    companies hiring in India (`services/seed_companies.csv`) and from the Common Crawl URL index
+    (board addresses seen on the web). The finder works out the company's board (its careers page,
+    or its name tried on each board system), reads it once, and turns it into an `employers` row
+    only if the board has jobs in India. Kept for history: a lead is never checked twice in a row
+    for nothing (`next_check_at`)."""
+
+    __tablename__ = "company_leads"
+
+    id: int | None = Field(default=None, primary_key=True)
+    name: str
+    domain: str | None = None  # the company's website, e.g. razorpay.com (seed leads)
+    careers_url: str | None = None
+    origin: str = Field(default="seed", index=True)  # seed | crawl
+    category: str | None = None  # seed list: unicorn | startup | product | global
+    # The board, once known (crawl leads arrive with it; seed leads get it from the finder).
+    kind: str | None = Field(default=None, index=True)
+    board: str | None = Field(default=None, index=True)
+    how: str | None = None  # how the board was found: careers_page | guessed | crawl
+    # pending | kept (became a company the scan reads) | no_india_jobs | no_board | error
+    status: str = Field(default="pending", index=True)
+    total_jobs: int | None = None  # postings on the board when checked
+    india_jobs: int | None = None  # of those, in India or remote open to India
+    matching_jobs: int | None = None  # of those, with a title matching your roles
+    employer_id: int | None = None  # the employers row it became
+    note: str | None = None
+    attempts: int = 0
+    added_at: datetime = Field(default_factory=utcnow)
+    checked_at: datetime | None = None
+    next_check_at: datetime | None = Field(default=None, index=True)  # None = due now
+
+
 class ApiCall(SQLModel, table=True):
     """Every request to a metered API (JSearch). Usage and quotas are counted from here.
     Written *before* the request is sent (status "sending"), so a crash still counts it."""
@@ -193,6 +261,10 @@ class ApiCall(SQLModel, table=True):
     relevant_jobs: int = 0
     error: str | None = None
     variant: str | None = None  # the wording used, e.g. "titles · exp off" (Phase 2.6)
+    # Company boards (Phase 2.7): postings the pre-check left out (not in India / not open to
+    # India; title matches none of your roles). `results` = every posting the board listed.
+    skipped_scope: int | None = None
+    skipped_title: int | None = None
 
 
 class FetchRun(SQLModel, table=True):
@@ -286,6 +358,10 @@ class Job(SQLModel, table=True):
     tags: list = Field(default_factory=list, sa_column=Column(JSON))
     job_url: str | None = None
     apply_url: str | None = None
+    # How it can be applied to (Phase 2.7): form:<ats> | direct | account:<ats> | aggregator:<name> |
+    # platform:<name>; the best of all its apply links (services/apply_route.py), and that link.
+    apply_route: str | None = Field(default=None, index=True)
+    apply_route_url: str | None = None
     source_published_at: datetime | None = None
     first_seen_at: datetime = Field(default_factory=utcnow)
     last_seen_at: datetime = Field(default_factory=utcnow)

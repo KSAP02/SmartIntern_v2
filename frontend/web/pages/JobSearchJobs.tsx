@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowUpRight, Check, ChevronDown, ChevronRight, Plus, Radar, RotateCcw, Search, X } from "lucide-react";
 import { api, errorMessage } from "../lib/api";
-import type { Category, JobCard, JobDecision, JobsOut, JobsView, Workplace } from "../lib/types";
+import type { ApplyKind, Category, JobCard, JobDecision, JobsOut, JobsView, Workplace } from "../lib/types";
 import { cx, useResource } from "../lib/util";
 import { Badge, Button, Card, EmptyState, ErrorBanner, Input, PageHeader, Skeleton } from "../components/ui";
 import { Modal } from "../components/Modal";
@@ -10,13 +10,14 @@ import { useToast } from "../components/Toast";
 import { FilterChips, MiniBar } from "../components/jobs/ToggleChips";
 import { JobDetailPanel } from "../components/jobs/JobDetailPanel";
 import { AddRoleModal } from "../components/jobs/AddRole";
-import { CATEGORY_LABEL, WORKPLACE_LABEL, foundAgo, formatPay, pct } from "../components/jobs/format";
+import { APPLY_KIND_LABEL, CATEGORY_LABEL, WORKPLACE_LABEL, applyRoute, foundAgo, formatPay, pct } from "../components/jobs/format";
 import { Select } from "../components/settings/form";
 
 const CATEGORY_OPTS = (Object.keys(CATEGORY_LABEL) as Category[]).map((v) => ({ value: v, label: CATEGORY_LABEL[v] }));
 const WORKPLACE_OPTS = (Object.keys(WORKPLACE_LABEL) as Workplace[]).map((v) => ({ value: v, label: WORKPLACE_LABEL[v] }));
 const YEARS_OPTS = [0, 1, 2, 3, 5, 8];
 const YEARS_KEY = "jobs.maxYears";
+const APPLY_OPTS = (Object.keys(APPLY_KIND_LABEL) as ApplyKind[]).map((v) => ({ value: v, label: APPLY_KIND_LABEL[v] }));
 
 function savedMaxYears(): number | null {
   try {
@@ -75,6 +76,7 @@ function JobRow({ job, view, checked, onCheck, onOpen, onDecide, onAddTitle, onM
   const pay = formatPay(job);
   const cov = job.coverage;
   const undecided = !job.decision;
+  const route = applyRoute(job.apply_route);
   return (
     <li className={cx("flex items-start gap-3 px-4 py-3.5", checked && "bg-violet-50/40 dark:bg-violet-500/5")}>
       <input
@@ -119,6 +121,7 @@ function JobRow({ job, view, checked, onCheck, onOpen, onDecide, onAddTitle, onM
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {job.category && <Badge>{CATEGORY_LABEL[job.category]}</Badge>}
           {job.workplace_type && <Badge>{WORKPLACE_LABEL[job.workplace_type]}</Badge>}
+          {route && <Badge tone={route.kind === "form" ? "green" : "neutral"}>{route.label}</Badge>}
           {job.min_years_experience != null && <Badge>{job.min_years_experience === 0 ? "No experience asked" : `${job.min_years_experience}+ yrs asked`}</Badge>}
           {job.country_codes.length > 0 && <Badge>{job.country_codes.join(", ")}</Badge>}
           {pay && <Badge tone={job.compensation_type === "unpaid" ? "neutral" : "accent"}>{pay}</Badge>}
@@ -181,6 +184,7 @@ export default function JobSearchJobs() {
   const [category, setCategory] = useState<Category | null>(null);
   const [workplace, setWorkplace] = useState<Workplace | null>(null);
   const [maxYears, setMaxYears] = useState<number | null>(savedMaxYears);
+  const [applyKind, setApplyKind] = useState<ApplyKind | null>(null);
   const [otherOpen, setOtherOpen] = useState(true);
   const [openId, setOpenId] = useState<number | null>(null);
   const [checked, setChecked] = useState<Set<number>>(new Set());
@@ -200,6 +204,7 @@ export default function JobSearchJobs() {
       workplace: workplace ?? undefined,
       view,
       max_years: view === "matches" && maxYears != null ? maxYears : undefined,
+      apply: applyKind ?? undefined,
     }),
   );
 
@@ -211,7 +216,7 @@ export default function JobSearchJobs() {
     }
     setChecked(new Set());
     void reload();
-  }, [query, category, workplace, view, maxYears, reload]);
+  }, [query, category, workplace, view, maxYears, applyKind, reload]);
 
   useEffect(() => {
     try {
@@ -222,7 +227,7 @@ export default function JobSearchJobs() {
   }, [maxYears]);
 
   const shown: JobCard[] = useMemo(() => (data ? (view === "matches" ? [...data.fits, ...data.other] : data.items) : []), [data, view]);
-  const filtered = !!(query || category || workplace || (view === "matches" && maxYears != null));
+  const filtered = !!(query || category || workplace || applyKind || (view === "matches" && maxYears != null));
   const counts = data?.counts ?? {};
   const current = VIEWS.find((v) => v.id === view)!;
 
@@ -327,6 +332,7 @@ export default function JobSearchJobs() {
         <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-6">
           <FilterChips label="Job type" value={category} onChange={setCategory} options={CATEGORY_OPTS} />
           <FilterChips label="Workplace" value={workplace} onChange={setWorkplace} options={WORKPLACE_OPTS} />
+          <FilterChips label="Apply via" value={applyKind} onChange={setApplyKind} options={APPLY_OPTS} />
           {view === "matches" && (
             <label className="flex items-center gap-2 text-xs text-zinc-500" title="Jobs that don't say how many years they ask for always stay.">
               Experience asked

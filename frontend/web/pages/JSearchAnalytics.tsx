@@ -323,6 +323,38 @@ export default function JSearchAnalytics() {
 
           <Card className="overflow-x-auto">
             <div className="px-5 pt-5">
+              <SectionHead title="By source" />
+              <p className="mt-1 text-xs text-zinc-500">Requests and results in this window; jobs = stored jobs each source found (a job found by two sources counts for both). “Agent can apply” = jobs with a company application form that needs no account.</p>
+            </div>
+            <table className="mt-3 w-full min-w-[40rem] text-left text-sm">
+              <thead>
+                <tr className="border-b border-zinc-200 text-[11px] text-zinc-400 dark:border-zinc-800">
+                  {["Source", "Requests", "Returned", "New", "Jobs", "In Matches", "Applied", "Agent can apply"].map((h) => (
+                    <th key={h} className="px-5 py-2 font-medium">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100 tabular-nums dark:divide-zinc-800">
+                {data.by_source.map((r) => (
+                  <tr key={r.source}>
+                    <td className="px-5 py-2.5 text-zinc-900 dark:text-zinc-100">{r.label}</td>
+                    <td className="px-5 py-2.5">{r.requests}</td>
+                    <td className="px-5 py-2.5">{r.results}</td>
+                    <td className="px-5 py-2.5">{r.new_jobs}</td>
+                    <td className="px-5 py-2.5">{r.jobs}</td>
+                    <td className="px-5 py-2.5">{r.in_matches}</td>
+                    <td className="px-5 py-2.5">{r.applied}</td>
+                    <td className="px-5 py-2.5">{r.agent_can_apply}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+
+          <Card className="overflow-x-auto">
+            <div className="px-5 pt-5">
               <SectionHead title="By wording (query lab)" />
             </div>
             {data.by_wording.length === 0 ? (

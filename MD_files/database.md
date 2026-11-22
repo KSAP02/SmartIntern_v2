@@ -174,6 +174,12 @@ Keys in use:
 | `embedding_signature` | embedding model + dimensions + metric | On startup, if it differs from `settings/config.toml`, job vectors are dropped and re-embedded (vectors from different models can't be compared); role contexts re-embed themselves when used (`role_contexts.embedding_signature`) |
 | `job_digest_version` | `job_search.DIGEST_VERSION` | The job text that is embedded changed (Phase 2.6: title + Responsibilities / Qualifications): stored job vectors are rebuilt on start |
 | `criteria_version` | `job_search.CRITERIA_VERSION` | What Search criteria exclude changed: every job is re-checked on start (2026-11-20: v2 location no longer excludes, v3 stale reasons refreshed, v4 criteria never exclude) |
+| `apply_route_version` | `job_search.APPLY_ROUTE_VERSION` | The apply-route rules (`services/apply_route.py`) changed: every job's route is re-derived on start (Phase 2.7 A0) |
+| `seed_companies_version` | hash of `services/seed_companies.csv` | The company finder's seed list changed: missing seed companies are added to `company_leads` on start (Phase 2.7 E) |
+| `company_finder_state` | JSON `{running, trigger, started_at, finished_at, message, error, last_run}` | Scan Jobs → Company finder card (Phase 2.7 E) |
+| `crawl_index_state` | JSON `{collection, api, hosts: {pattern: {pages, next, done}}, leads, finished, checked_newer, last_error}` | Where the finder is in the Common Crawl index, so each run continues (Phase 2.7 E) |
+| `boards_roles_key` | hash of your roles' title words | Your roles changed: every quiet board (`employers.next_read_at`) is due again (Phase 2.7 E) |
+| `starter_companies_version` | hash of the starter list (`services/starter_companies.py`) | The system-managed company list changed: missing starter companies are added (switched on) on start; companies the system switched off stay off |
 | `phase26_dropped_collections` | ISO datetime | The unused `memory_cards` / `job_requirements` Milvus collections were dropped (once) |
 | `config_applied` | JSON `{matching, embedding}` | What the job pipeline was last re-scored / embedded with. `settings_effects.sync_config` compares it with config.toml (on save, every 30 s, on start) and re-maps or re-embeds when they differ, so hand edits and edits made while the app was down take effect too |
 | `jsearch_provider_usage` | JSON `{checked_at, fetched_at, data, error}` | OpenWeb Ninja's `/usage` answer (raw), shown on Admin → JSearch analytics; its "remaining" caps the request budget (minus our calls since) for 7 days |
@@ -208,7 +214,7 @@ job_sources (health) ─ scan ─▶ fetch_runs (per scan)  scans (per scan, tot
 | `scans` | One row per scan: phase + totals, for the Overview | `id`, `trigger` (manual/auto), `phase`, `totals` JSON, `error`, `started_at`, `finished_at` |
 | `fetch_runs` | One row per source per scan: the per-day history | `scan_id`, `scan_date`, `source`, `company` (since Phase 2.5: "N requests"), `status`, `fetched`, `new`, `updated`, `duplicates`, `already_seen`, `error` (or why no request was spent) |
 | `job_ledger` | **Dedupe memory.** Every listing ever seen, kept after the full job is pruned or applied to, so it's never re-imported or re-processed; also per-date analytics | `source` + `source_job_id`, `dedupe_key` (company+title+location), `canonical_url`, `job_id` (null once pruned), `first_seen_date`, `outcome` (active / excluded / not_relevant / expired / hidden / other / applied), `is_duplicate`, `category`, `workplace_type`, `country`, `relevance` |
-| `jobs` | Full data for jobs still in play (pruned per Limits & retention) | identity: `seen_on` JSON (every source listing it), `dedupe_key`, `canonical_url`, `content_hash`; posting: `title`, `company_name`, `location_text`, `description_text` (plain text), `job_url`, `apply_url`, `source_published_at`; facts (null = unknown): `category`, `workplace_type`, `country_codes`, `remote_regions`, `compensation_type`, `salary_*`, `seniority`, `min_years_experience`, `internship_duration`, `visa_sponsorship`, `field_sources` JSON (`source` / `rules`); pipeline: `pipeline_status` (new → excluded / not_relevant / relevant → mapped; failed), `status_reason`, `status` (active / expired), `relevance` (since Phase 2.6: job digest vs the role context of `role_match`, cosine; null when that role has no context) + `relevance_card_id` (unused since 2.6, always null), `role_score` + `role_match` (job title vs your best-matching "Roles you want", cosine; null when no roles are set; this decides relevance when roles are set), `coverage` JSON, `mapped_memory_version`, `hidden`, `repost_of`, `raw_payload` (dropped after N days), `api_call_id` (the JSearch request that found it; credits relevance back to its search), `highlights` JSON (JSearch `job_highlights`: Qualifications / Responsibilities lists, used as the requirements; kept), **`relevance_override`** (your call: `relevant` = keep in Matches whatever the title check / criteria say, `not_relevant`, null = checks decide), **`decision`** (null = undecided | `selected` = for the agent to apply | `discarded` | `applied`) + `decided_at`. `hidden` / `hidden_at` are legacy (moved to `decision = "discarded"` on start-up). **Retention:** only discarded jobs are deleted (after `limits.keep_discarded_days`); `status = expired` is a label by posting age (`limits.expire_after_days`), nothing is deleted for age or for being excluded / not relevant |
+| `jobs` | Full data for jobs still in play (pruned per Limits & retention) | identity: `seen_on` JSON (every source listing it), `dedupe_key`, `canonical_url`, `content_hash`; posting: `title`, `company_name`, `location_text`, `description_text` (plain text), `job_url`, `apply_url`, `source_published_at`; facts (null = unknown): `category`, `workplace_type`, `country_codes`, `remote_regions`, `compensation_type`, `salary_*`, `seniority`, `min_years_experience`, `internship_duration`, `visa_sponsorship`, `field_sources` JSON (`source` / `rules`); pipeline: `pipeline_status` (new → excluded / not_relevant / relevant → mapped; failed), `status_reason`, `status` (active / expired), `relevance` (since Phase 2.6: job digest vs the role context of `role_match`, cosine; null when that role has no context) + `relevance_card_id` (unused since 2.6, always null), `role_score` + `role_match` (job title vs your best-matching "Roles you want", cosine; null when no roles are set; this decides relevance when roles are set), `coverage` JSON, `mapped_memory_version`, `hidden`, `repost_of`, `raw_payload` (dropped after N days), `api_call_id` (the JSearch request that found it; credits relevance back to its search), `highlights` JSON (JSearch `job_highlights`: Qualifications / Responsibilities lists, used as the requirements; kept), **`relevance_override`** (your call: `relevant` = keep in Matches whatever the title check / criteria say, `not_relevant`, null = checks decide), **`decision`** (null = undecided | `selected` = for the agent to apply | `discarded` | `applied`) + `decided_at`. `hidden` / `hidden_at` are legacy (moved to `decision = "discarded"` on start-up). **Retention:** only discarded jobs are deleted (after `limits.keep_discarded_days`); `status = expired` is a label by posting age (`limits.expire_after_days`), nothing is deleted for age or for being excluded / not relevant; **`apply_route`** (Phase 2.7: `form:<ats>` = public ATS form, no account, the agent's target / `direct` / `account:<ats>` / `aggregator:<name>` / `platform:<name>`; the best of all its apply links, by host) + **`apply_route_url`** (that link) |
 | `job_requirements` | The "job memory" **and** the middle layer: one row per chunk of the description with its evidence | `job_id`, `section`, `importance` (must / nice / unknown), `text`, `skills` JSON, `status` (met / partial / missing / unknown = not judged), `method` (exact_skill / numeric / none; `vector` only on rows from before Phase 2.6), `best_card_id` (the card naming the skill), `best_score`, `evidence` JSON (empty since 2.6), `embedding_status` (unused since 2.6) |
 
 `requirement_matches` from the plan was folded into `job_requirements` (always 1:1).
@@ -310,3 +316,87 @@ From the game plan; add the real schema here when each phase is built.
 | 5 | shifts (agent runs) | intern / shifts |
 | 6 | answers (form answer bank), form sessions | records / answers, apply / forms |
 | 6+ | applications tracker | apply / outbox |
+
+### Phase 2.7 A0 notes (2026-11-20)
+
+- `api_calls.api` = the source's registry name (`jsearch` so far); the request budget
+  (`api_budget`) counts each metered source separately; a 429 pause is per source
+  (`jsearch_blocked_until`, `<name>_blocked_until` in `meta`).
+- `jobs.apply_route` / `apply_route_url`: set when a job is stored, upgraded when a better link is
+  seen later (another source or a repeat); re-derived on start when the rules change.
+
+### Phase 2.7 A1 (2026-11-20): `employers` + company-board requests
+
+**`employers`** — a company whose public job board is read on every scan (Search Settings →
+Companies). Why: company boards give live postings with a form the agent can fill (Phase 2.7
+form-first).
+
+| Column | Type | Meaning |
+| --- | --- | --- |
+| `id` | INTEGER PK | |
+| `name` | TEXT | shown name |
+| `kind` | TEXT | `greenhouse` / `lever` / `ashby` / `smartrecruiters` / `workable` / `recruitee` (= the source name) |
+| `board` | TEXT | board id in that ATS (`postman`; Greenhouse EU = `eu:<token>`); unique with `kind` (enforced in code) |
+| `careers_url` | TEXT | the link you pasted |
+| `enabled` | BOOLEAN | read on scans; set by the system (starter companies on; a board answering "not found" is switched off) |
+| `origin` | TEXT | `you` / `starter` (drafted by Claude, `services/starter_companies.py`) / `discovered` (found in a stored job's apply link, Phase 2.7 A3) |
+| `note` | TEXT | e.g. India cities seen |
+| `added_at`, `last_checked_at` | DATETIME | |
+| `last_error` | TEXT | last read failure (e.g. HTTP 404) |
+| `last_found`, `last_in_scope`, `last_kept` | INTEGER | postings on the board / in India or remote-India / matching your roles, at the last check or scan |
+| `found_via_job_id` | INTEGER (nullable, A3) | discovered companies: the job whose link pointed to the board (no FK; the job may be deleted later) |
+| `empty_scans` | INTEGER (nullable, A3) | discovered companies: scans in a row whose board had no job in India; NULL = not read yet. First read empty, or `drop_after_empty_scans` in a row -> `enabled = false` with a `note` |
+
+- **`api_calls`** for company boards: `api` = the ATS name, `params` = `{query: "<Company> ·
+  <ATS> board", board, company}`, `results` = postings the board listed, `new_jobs`; new nullable
+  **`skipped_scope`** (outside India / not remote-India) and **`skipped_title`** (title matching
+  none of your roles). Not counted in any request budget.
+- Jobs from a board: `seen_on[].source` = the ATS, `source_job_id` = `<board>:<posting id>`; no
+  age limit on ingest (a board lists only open postings); a stored job its board no longer lists
+  is marked `status = "expired"`; age-based expiry skips board jobs.
+
+### Phase 2.7 C1 (2026-11-22): remote feeds
+
+No new table. Feed requests are `api_calls` rows with `api` = `himalayas` / `remotejobs` /
+`remotive`, `params` = `{query: "<role> · <Feed> (remote, open to India)", feed, q?}`,
+`results` = jobs the feed returned, `skipped_scope` = not open to India, `skipped_title` = title
+matching none of your roles. Jobs from a feed: `seen_on[].source` = the feed, `source_job_id` =
+the feed's id (Himalayas: its job page URL), `job_url` = the feed's own job page (its terms ask
+for that link back). Feed jobs age out like JSearch jobs (not closed by absence). Remotive's
+"at most every 8 h" is counted from its last `ok` row in `api_calls`.
+
+### Phase 2.7 E (2026-11-22): company finder, Indian boards, read schedule
+
+**`company_leads`** — **why it exists:** companies the finder may check, kept with the verdict so
+none is checked twice for nothing. Written by `services/company_finder.py` and
+`services/crawl_index.py`; shown on Scan Jobs → Company finder.
+
+| Column | Type | Null | Meaning |
+| --- | --- | --- | --- |
+| `id` | INTEGER PK | no | |
+| `name` | TEXT | no | Company name (crawl leads: from the board id) |
+| `domain` | TEXT | yes | Website, e.g. razorpay.com (seed leads) |
+| `careers_url` | TEXT | yes | Careers page if known |
+| `origin` | TEXT, indexed | no | `seed` (seed list) \| `crawl` (Common Crawl index) |
+| `category` | TEXT | yes | Seed list: unicorn \| startup \| product \| global |
+| `kind`, `board` | TEXT, indexed | yes | The board once known (crawl leads arrive with it) |
+| `how` | TEXT | yes | How the board was found: careers_page \| guessed (name tried on each system) \| crawl |
+| `status` | TEXT, indexed | no | pending \| kept \| no_india_jobs \| no_board \| error |
+| `total_jobs`, `india_jobs`, `matching_jobs` | INTEGER | yes | The board when checked: postings, in India (or open to India), title matching your roles |
+| `employer_id` | INTEGER | yes | The `employers` row it became (kept) |
+| `note` | TEXT | yes | Plain-words verdict |
+| `attempts` | INTEGER | no | Checks so far |
+| `added_at`, `checked_at` | DATETIME | no / yes | |
+| `next_check_at` | DATETIME, indexed | yes | Not due before (no India jobs: +30 days; no board: +90); None = due |
+
+A kept lead becomes an `employers` row with `origin = "discovered"` (note "Found by the company
+finder through ..."), so the A3 rules apply to it (switched off when its India jobs go away).
+
+**`employers`** gains `next_read_at` (a board with no job matching your roles at its last read is
+read again only from then: `quiet_board_days`, 7; None = every scan; all reset when your roles
+change) and `etag` / `last_modified` (reserved for change detection; unused while 304 support is
+unverified).
+
+New board kinds in `employers.kind` / `api_calls.api`: `keka`, `darwinbox`, `zohorecruit`
+(board id for Zoho Recruit = subdomain + "." + data-centre TLD, e.g. `moneyforward.in`). Their jobs'
+apply route is `account:<kind>` (CAPTCHA / OTP: needs you). Scan totals gain `boards_quiet`.

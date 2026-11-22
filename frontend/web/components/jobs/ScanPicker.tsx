@@ -6,12 +6,16 @@ import { Radar, RotateCcw } from "lucide-react";
 import { api, errorMessage } from "../../lib/api";
 import type { DatePosted, ScanOut, ScanSelection, SearchCriteria, SearchPlanOut } from "../../lib/types";
 import { Button, Input, Skeleton } from "../ui";
+import { cx } from "../../lib/util";
 import { Modal } from "../Modal";
 import { Field, Select, SwitchRow } from "../settings/form";
 import { LocationAdd } from "./LocationAdd";
 import { RequestParams } from "./RequestParams";
 
-const DATE_OPTS: { value: DatePosted; label: string }[] = [
+// "auto" = no override: each search asks only for jobs posted since it last ran (Phase 2.7 E), so a
+// request doesn't spend quota on jobs already found.
+const DATE_OPTS: { value: DatePosted | "auto"; label: string }[] = [
+  { value: "auto", label: "New since this search last ran" },
   { value: "today", label: "Past 24 hours" },
   { value: "3days", label: "Past 3 days" },
   { value: "week", label: "Past week" },
@@ -20,14 +24,23 @@ const DATE_OPTS: { value: DatePosted; label: string }[] = [
 ];
 const DEFAULT_PLACE = ""; // no saved locations: the Search API country in Admin settings
 
+const KIND_HEADING: Record<string, string> = {
+  search: "Job search",
+  board: "Company boards",
+  feed: "Remote feeds · open to India",
+};
+
 export function ScanPicker({ open, onClose, onStarted }: { open: boolean; onClose: () => void; onStarted: (s: ScanOut) => void }) {
   const [criteria, setCriteria] = useState<SearchCriteria | null>(null);
   const [chosen, setChosen] = useState<Set<string>>(new Set());
   const [combine, setCombine] = useState(false);
   const [place, setPlace] = useState(DEFAULT_PLACE);
   const [adding, setAdding] = useState(false);
-  const [datePosted, setDatePosted] = useState<DatePosted>("week");
+  const [datePosted, setDatePosted] = useState<DatePosted | "auto">("auto");
   const [texts, setTexts] = useState<Record<number, string>>({});
+  // Sources you unticked for this scan (the rest = every enabled source), and the enabled ones.
+  const [skipped, setSkipped] = useState<Set<string>>(new Set());
+  const [known, setKnown] = useState<string[]>([]);
   const [plan, setPlan] = useState<SearchPlanOut | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
@@ -38,6 +51,7 @@ export function ScanPicker({ open, onClose, onStarted }: { open: boolean; onClos
     setError(null);
     setPlan(null);
     setTexts({});
+    setSkipped(new Set());
     setAdding(false);
     setDatePosted("week");
     void (async () => {
@@ -70,8 +84,9 @@ export function ScanPicker({ open, onClose, onStarted }: { open: boolean; onClos
       roles: pick,
       combine,
       locations: place ? [place] : [],
-      date_posted: datePosted,
+      ...(datePosted !== "auto" ? { date_posted: datePosted } : {}),
       ...(Object.keys(typed).length ? { query_texts: typed } : {}),
+      ...(skipped.size ? { sources: known.filter((n) => !skipped.has(n)) } : {}),
     };
   };
 
@@ -90,6 +105,7 @@ export function ScanPicker({ open, onClose, onStarted }: { open: boolean; onClos
         .then((p) => {
           if (!live) return;
           setPlan(p);
+          setKnown(p.sources.filter((s) => s.enabled && s.configured).map((s) => s.name));
           setError(null);
         })
         .catch((e) => live && setError(errorMessage(e)));
@@ -99,7 +115,7 @@ export function ScanPicker({ open, onClose, onStarted }: { open: boolean; onClos
       clearTimeout(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, roles, chosen, combine, place, datePosted, texts]);
+  }, [open, roles, chosen, combine, place, datePosted, texts, skipped]);
 
   const toggle = (r: string, on: boolean) =>
     setChosen((s) => {
@@ -138,6 +154,14 @@ export function ScanPicker({ open, onClose, onStarted }: { open: boolean; onClos
   };
 
   const n = plan?.calls.length ?? 0;
+  const picked = (kind: string) => (plan?.sources ?? []).filter((s) => s.kind === kind && s.chosen && !skipped.has(s.name));
+  const companies = picked("board").reduce((n, s) => n + s.details.length, 0);
+  const feedReads = picked("feed").reduce((n, s) => n + Math.max(1, s.details.length), 0);
+  const scanLabel = [
+    `${n} request${n === 1 ? "" : "s"}`,
+    companies ? `${companies} compan${companies === 1 ? "y" : "ies"}` : "",
+    feedReads ? `${feedReads} feed read${feedReads === 1 ? "" : "s"}` : "",
+  ].filter(Boolean).join(" + ");
   return (
     <Modal
       open={open}
@@ -152,8 +176,8 @@ export function ScanPicker({ open, onClose, onStarted }: { open: boolean; onClos
             </span>
           )}
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" icon={<Radar className="size-4" />} loading={starting} disabled={!plan || !plan.fits_budget || n === 0} onClick={() => void start()}>
-            Scan ({n} request{n === 1 ? "" : "s"})
+          <Button variant="primary" icon={<Radar className="size-4" />} loading={starting} disabled={!plan || !plan.fits_budget} onClick={() => void start()}>
+            Scan ({scanLabel})
           </Button>
         </>
       }
@@ -218,7 +242,7 @@ export function ScanPicker({ open, onClose, onStarted }: { open: boolean; onClos
               </Select>
             </Field>
             <Field label="Date posted" htmlFor="scan-date">
-              <Select id="scan-date" value={datePosted} onChange={(e) => setDatePosted(e.target.value as DatePosted)}>
+              <Select id="scan-date" value={datePosted} onChange={(e) => setDatePosted(e.target.value as DatePosted | "auto")}>
                 {DATE_OPTS.map((o) => (
                   <option key={o.value} value={o.value}>
                     {o.label}
@@ -231,6 +255,56 @@ export function ScanPicker({ open, onClose, onStarted }: { open: boolean; onClos
             <Field label="New location" hint="Saved to your Search criteria. A state or city goes into the query text; the country is sent as the country.">
               <LocationAdd existing={criteria.locations} onAdd={(p) => void addPlace(p)} />
             </Field>
+          )}
+
+          {plan && plan.sources.length > 0 && (
+            <div>
+              <div className="mb-2 text-xs text-zinc-500">Sources</div>
+              <ul className="divide-y divide-zinc-100 rounded-md border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+                {plan.sources.flatMap((s, i) => {
+                  const heading = i === 0 || plan.sources[i - 1].kind !== s.kind ? KIND_HEADING[s.kind] : undefined;
+                  const usable = s.enabled && s.configured;
+                  const row = (
+                    <li key={s.name}>
+                      <label className={cx("flex items-center gap-3 px-3 py-2 text-sm", usable ? "cursor-pointer text-zinc-800 dark:text-zinc-200" : "text-zinc-400")}>
+                        <input
+                          type="checkbox"
+                          checked={usable && !skipped.has(s.name)}
+                          disabled={!usable}
+                          onChange={(e) =>
+                            setSkipped((prev) => {
+                              const n = new Set(prev);
+                              if (e.target.checked) n.delete(s.name);
+                              else n.add(s.name);
+                              return n;
+                            })
+                          }
+                          className="size-4 accent-violet-600"
+                        />
+                        <span className="min-w-0 flex-1">
+                          {s.label}
+                          {s.details.length > 0 && (
+                            <span className="block truncate text-[11px] text-zinc-400" title={s.details.join(", ")}>
+                              {s.details.slice(0, 4).join(", ")}
+                              {s.details.length > 4 ? ` +${s.details.length - 4} more` : ""}
+                            </span>
+                          )}
+                        </span>
+                        <span className="shrink-0 text-right text-xs text-zinc-500 tabular-nums">{s.summary}</span>
+                      </label>
+                    </li>
+                  );
+                  return heading
+                    ? [
+                        <li key={`h-${s.kind}`} className="bg-zinc-50 px-3 py-1.5 text-[11px] font-semibold tracking-wider text-zinc-400 uppercase dark:bg-zinc-900">
+                          {heading}
+                        </li>,
+                        row,
+                      ]
+                    : [row];
+                })}
+              </ul>
+            </div>
           )}
 
           {plan &&
