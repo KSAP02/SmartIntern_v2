@@ -46,6 +46,9 @@ def _recover() -> None:
 
         company_finder.recover()  # seed list of companies to check (Phase 2.7 E)
         job_search.backfill_call_jobs()  # requests made before api_call_jobs existed
+        from backend.services import profiles
+
+        profiles.recover()  # profiles get their own roles; a switch cut short is finished (Phase 2.8)
         role_contexts.ensure_for_roles()  # roles without a role context get one (model calls)
         job_search.reembed_jobs_if_needed()  # the embedded job text changed (Phase 2.6)
     except Exception as e:  # noqa: BLE001 - startup must not fail on this

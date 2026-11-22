@@ -4,6 +4,7 @@ import { Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom"
 import { BarChart3, Brain, ChevronDown, ChevronRight, FileCog, FileStack, LayoutDashboard, Menu, Moon, Radar, SlidersHorizontal, Sun, UserRound, X } from "lucide-react";
 import { api } from "./lib/api";
 import { cx } from "./lib/util";
+import { PROFILE_EVENT } from "./components/ProfileBar";
 import Desk from "./pages/Desk";
 import Vault from "./pages/Vault";
 import Profile from "./pages/Profile";
@@ -173,6 +174,37 @@ function Logo() {
   );
 }
 
+/** The active profile's name (Phase 2.8); reloads after a switch. */
+function ActiveProfile({ onNavigate }: { onNavigate?: () => void }) {
+  const [name, setName] = useState<string | null>(null);
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    const load = () =>
+      api.listProfiles().then(
+        (d) => {
+          setName(d.profiles.find((p) => p.active)?.name ?? null);
+          setCount(d.profiles.length);
+        },
+        () => setName(null),
+      );
+    void load();
+    window.addEventListener(PROFILE_EVENT, load);
+    return () => window.removeEventListener(PROFILE_EVENT, load);
+  }, []);
+  if (!name) return null;
+  return (
+    <NavLink
+      to="/profile"
+      onClick={onNavigate}
+      title={count > 1 ? "Active profile: switch on My Profile" : "Your profile"}
+      className="mb-6 flex items-center gap-2 truncate px-3 text-xs text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+    >
+      <UserRound className="size-3.5 shrink-0" strokeWidth={1.75} />
+      <span className="truncate">{name}</span>
+    </NavLink>
+  );
+}
+
 function Nav({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <nav className="flex flex-col gap-6">
@@ -229,9 +261,10 @@ export default function App() {
     <div className="min-h-screen">
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-56 flex-col border-r border-zinc-200 bg-zinc-50 px-3 py-7 lg:flex dark:border-zinc-800 dark:bg-zinc-950">
-        <div className="mb-10 px-3">
+        <div className="mb-4 px-3">
           <Logo />
         </div>
+        <ActiveProfile />
         <div className="flex-1 overflow-y-auto">
           <Nav />
         </div>
@@ -251,6 +284,7 @@ export default function App() {
       </header>
       {menuOpen && (
         <div className="fade-in fixed inset-x-0 top-[57px] bottom-0 z-20 overflow-y-auto bg-zinc-50 px-4 py-5 lg:hidden dark:bg-zinc-950">
+          <ActiveProfile onNavigate={() => setMenuOpen(false)} />
           <Nav onNavigate={() => setMenuOpen(false)} />
           <div className="mt-6">
             <Footer dark={dark} toggle={toggle} />

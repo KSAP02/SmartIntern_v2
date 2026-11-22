@@ -35,6 +35,7 @@ import type {
   FillResult,
   MemoryOut,
   ProfileOut,
+  ProfilesOut,
   RoleContextOut,
   RoleContextPatch,
   RoleMatch,
@@ -132,6 +133,14 @@ export const api = {
   applyFill: (req: Omit<FillRequest, "preview">) =>
     request<FillResult>("POST", "/records/profile/fill", { ...req, preview: false }),
   confirmProfile: () => request<ProfileOut>("POST", "/records/profile/confirm"),
+  // Several profiles, one active (Phase 2.8)
+  listProfiles: () => request<ProfilesOut>("GET", "/records/profile/profiles"),
+  createProfile: (body: { name?: string | null; resume_id?: number | null; copy_of?: number | null }) =>
+    request<ProfilesOut>("POST", "/records/profile/profiles", body),
+  renameProfile: (id: number, body: { name?: string | null; resume_id?: number | null }) =>
+    request<ProfilesOut>("PATCH", `/records/profile/profiles/${id}`, body),
+  deleteProfile: (id: number) => request<void>("DELETE", `/records/profile/profiles/${id}`),
+  activateProfile: (id: number) => request<ProfilesOut>("POST", `/records/profile/profiles/${id}/activate`),
   /** Proposes themed skill groups; nothing is saved. */
   regroupSkills: (groups: SkillGroup[]) =>
     request<{ groups: SkillGroup[] }>("POST", "/records/profile/skills/regroup", { groups }),
@@ -159,6 +168,9 @@ export const api = {
     if (q.view && q.view !== "matches") p.set("view", q.view);
     if (q.max_years != null) p.set("max_years", String(q.max_years));
     if (q.apply) p.set("apply", q.apply);
+    if (q.found_from) p.set("found_from", q.found_from);
+    if (q.found_to) p.set("found_to", q.found_to);
+    if (q.tz) p.set("tz", q.tz);
     const qs = p.toString();
     return request<JobsOut>("GET", `/scout/search/jobs${qs ? `?${qs}` : ""}`);
   },

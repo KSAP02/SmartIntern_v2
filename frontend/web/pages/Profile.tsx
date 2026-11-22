@@ -37,6 +37,7 @@ import { ChipInput } from "../components/ChipInput";
 import { SkillGroupsEditor } from "../components/SkillGroupsEditor";
 import { Modal } from "../components/Modal";
 import { useToast } from "../components/Toast";
+import { ProfileBar } from "../components/ProfileBar";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -174,10 +175,13 @@ function FillModal({
   open,
   onClose,
   onApplied,
+  preferredResumeId,
 }: {
   open: boolean;
   onClose: () => void;
   onApplied: (me: ProfileOut, applied: number) => void;
+  /** The resume this profile is built on (Phase 2.8). */
+  preferredResumeId?: number | null;
 }) {
   const toast = useToast();
   const [resumes, setResumes] = useState<ResumeOut[] | null>(null);
@@ -197,12 +201,12 @@ function FillModal({
       (rs) => {
         setResumes(rs);
         const parsed = rs.filter((r) => r.parse_status === "parsed");
-        const def = parsed.find((r) => r.is_default) ?? parsed[0];
+        const def = parsed.find((r) => r.id === preferredResumeId) ?? parsed.find((r) => r.is_default) ?? parsed[0];
         setResumeId(def ? def.id : null);
       },
       (e) => setErr(errorMessage(e)),
     );
-  }, [open]);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!open || resumeId === null) return;
@@ -611,6 +615,8 @@ export default function ProfilePage() {
           </>
         }
       />
+
+      <ProfileBar dirty={dirty} onSwitched={() => void load()} />
 
       <div className="mb-6 h-1.5 overflow-hidden rounded-full bg-zinc-200/70 dark:bg-zinc-800">
         <div className="h-full rounded-full bg-violet-600 transition-[width] duration-700 dark:bg-violet-400" style={{ width: `${me.completeness}%` }} />
@@ -1030,6 +1036,7 @@ export default function ProfilePage() {
       )}
 
       <FillModal
+        preferredResumeId={me.resume_id}
         open={fillOpen}
         onClose={() => setFillOpen(false)}
         onApplied={(m, applied) => {

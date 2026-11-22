@@ -225,9 +225,11 @@ def criteria_reason(job: Job, c: SearchCriteria) -> str | None:  # noqa: ARG001
 
 
 def enabled_cards(session: Session) -> dict[int, MemoryCard]:
-    """Your enabled memory cards (text only: since Phase 2.6 cards aren't embedded)."""
-    return {c.id: c for c in session.exec(select(MemoryCard).where(MemoryCard.enabled == True)).all()  # noqa: E712
-            if c.id is not None}
+    """Your enabled memory cards (text only: since Phase 2.6 cards aren't embedded), active profile."""
+    from backend.db import active_profile_id
+
+    q = select(MemoryCard).where(MemoryCard.enabled == True, MemoryCard.profile_id == active_profile_id(session))  # noqa: E712
+    return {c.id: c for c in session.exec(q).all() if c.id is not None}
 
 
 def _cos(a: list[float], b: list[float]) -> float:

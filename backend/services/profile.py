@@ -44,6 +44,9 @@ def profile_out(session: Session) -> ProfileOut:
         updated_at=row.updated_at,
         completeness=completeness(profile),
         memory_stale=memory.is_stale(session),
+        profile_id=row.id,
+        profile_name=row.name or "My profile",
+        resume_id=row.resume_id,
     )
 
 
@@ -87,6 +90,8 @@ def fill_apply(session: Session, resume_id: int, mode: str, exclude: list[str]) 
         row.data = profile.model_dump()
         row.field_origins = origins
         row.last_filled_from_resume_id = resume_id
+        if row.resume_id is None:
+            row.resume_id = resume_id  # the profile is now built on this resume
         row.updated_at = utcnow()
         session.add(row)
         session.commit()

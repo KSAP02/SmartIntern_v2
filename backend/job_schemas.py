@@ -763,12 +763,21 @@ ApplyKind = Literal["form", "direct", "account", "aggregator", "platform"]
 JobsView = Literal["matches", "selected", "applied", "discarded", "not_relevant", "excluded"]
 
 
+class FoundDay(BaseModel):
+    """Jobs page: jobs found on one day."""
+
+    date: str  # YYYY-MM-DD in your timezone
+    count: int
+
+
 class JobsOut(BaseModel):
     view: str
     fits: list[JobCard]  # view "matches": undecided relevant jobs that fit the apply preset
     other: list[JobCard]  # view "matches": undecided relevant jobs outside the preset
     items: list[JobCard]  # every other view
     counts: dict[str, int]  # fits, other, selected, applied, discarded, not_relevant, excluded
+    # Days this tab's jobs were found (with the other filters, before the date filter), newest first.
+    days: list[FoundDay] = []
 
 
 class CardRef(BaseModel):

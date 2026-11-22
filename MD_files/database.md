@@ -100,18 +100,25 @@ profile: a resume is only a *source* the user can pull from on the My Profile pa
 
 Written by `backend/services/vault.py`.
 
-### 3.2 `profile`: the one profile (My Profile page, `/profile`)
+### 3.2 `profile`: your profiles (My Profile page, `/profile`)
 
 **Why it exists:** the single source of truth about the user (single-user app). It is
 what Memory cards are built from and, later, what forms are filled from. It is filled
 from a resume only via **Fill in using resume** (preview → apply), and hand edits are
 tracked so they are never silently overwritten.
 
-Always exactly one row, `id = 1` (created on first access by `get_profile_row`).
+**Since Phase 2.8: one row per profile, one active** (meta `active_profile_id`, default 1;
+`get_profile_row` returns the active one and creates profile 1 when there is none). Each profile
+owns its memory cards, role contexts and roles; jobs and every other setting are shared.
+The profile from before 2.8 is `id = 1`.
 
 | Column | Type | Null | Default | Meaning |
 | --- | --- | --- | --- | --- |
-| `id` | INTEGER PK | no | 1 | Always 1 |
+| `id` | INTEGER PK | no | | 1 = the first profile |
+| `name` | TEXT | yes | | Shown in the switcher ("My profile" when empty) |
+| `resume_id` | INTEGER | yes | | The resume it is built on (Fill in using resume starts from it); backfilled from `last_filled_from_resume_id` |
+| `roles`, `auto_roles` | JSON list | yes | | Its "Roles you want" / automatic-scan roles. The active profile's live copy is in `app_settings` (criteria); it is saved here on every criteria save and on a switch, and the new profile's are swapped into the criteria (`profiles.activate`). None = not set yet (takes the criteria's on start) |
+| `created_at` | DATETIME | yes | | |
 | `data` | JSON | no | `{}` | The profile, shape = `Profile` (see §4) |
 | `field_origins` | JSON | no | `{}` | Where each field's value came from. Key = path, value = `"user"` (edited by hand) or `"resume:<id>"` (filled from that resume). Paths: scalars `personal.address.city`; lists `skills.languages`, `skills.groups`; list items `work_history[<item id>]` |
 | `last_filled_from_resume_id` | INTEGER | yes | | Resume used in the last fill |
@@ -123,6 +130,10 @@ Written by `backend/services/profile.py` (logic in `profile_fill.py`), API room
 `/api/records/profile`, tuning in `[records.profile]`.
 
 ### 3.3 `memory_cards`: the "context" (Memory page)
+
+**Phase 2.8:** `profile_id` (INTEGER, indexed): the profile the card belongs to; only the active
+profile's cards are listed, used for evidence and written into role contexts. A card saved without
+one gets the active profile (a `before_insert` hook in `db.py`); cards from before 2.8 → 1.
 
 **Why it exists:** a profile is one big nested document; each card is one readable,
 editable piece of it (one job, one project, one skill group...). **Since Phase 2.6 cards are
@@ -171,6 +182,8 @@ Keys in use:
 
 | Key | Value | Used for |
 | --- | --- | --- |
+| `active_profile_id` | profile id | The profile in use (Phase 2.8): cards, role contexts and roles follow it |
+| `profile_switch_state` | JSON `{running, profile_id, step, error, finished_at}` | The background work after a switch (build cards, write role contexts, re-score jobs); My Profile shows it |
 | `embedding_signature` | embedding model + dimensions + metric | On startup, if it differs from `settings/config.toml`, job vectors are dropped and re-embedded (vectors from different models can't be compared); role contexts re-embed themselves when used (`role_contexts.embedding_signature`) |
 | `job_digest_version` | `job_search.DIGEST_VERSION` | The job text that is embedded changed (Phase 2.6: title + Responsibilities / Qualifications): stored job vectors are rebuilt on start |
 | `criteria_version` | `job_search.CRITERIA_VERSION` | What Search criteria exclude changed: every job is re-checked on start (2026-11-20: v2 location no longer excludes, v3 stale reasons refreshed, v4 criteria never exclude) |
@@ -240,7 +253,8 @@ Role contexts; never rewritten automatically after you edit it.
 | --- | --- | --- |
 | `id` | INTEGER PK | |
 | `role` | TEXT | The role as written |
-| `role_key` | TEXT unique | Lowercased, spaces collapsed (matches `jobs.role_match`) |
+| `profile_id` | INTEGER, indexed | Phase 2.8: the profile it belongs to (before 2.8 → 1; unset → the active one) |
+| `role_key` | TEXT, indexed | Lowercased, spaces collapsed (matches `jobs.role_match`); **unique per profile** (`uq_role_contexts_profile_role` on `profile_id, role_key`; the old unique index on `role_key` alone is replaced once on start) |
 | `status` | TEXT | `pending` / `ready` / `failed` |
 | `error` | TEXT | Why writing failed |
 | `summary` | TEXT | 2–3 sentences |

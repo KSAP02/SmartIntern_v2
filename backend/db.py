@@ -5,7 +5,7 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from functools import lru_cache
 
-from sqlalchemy import JSON, Column, Text, event, inspect, text
+from sqlalchemy import JSON, Column, Text, UniqueConstraint, event, inspect, text
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
 from backend import snapshots
@@ -36,9 +36,18 @@ class Resume(SQLModel, table=True):
 
 
 class ProfileRow(SQLModel, table=True):
+    """Phase 2.8: one row per profile. The active one is meta `active_profile_id` (default 1);
+    memory cards and role contexts belong to a profile, and so do the roles you search for."""
+
     __tablename__ = "profile"
 
-    id: int = Field(default=1, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
+    name: str | None = None  # shown in the profile switcher
+    resume_id: int | None = None  # the resume it is built on (Fill in using resume defaults to it)
+    # Its "Roles you want" / automatic-scan roles; None = not set yet (search criteria's are used).
+    roles: list | None = Field(default=None, sa_column=Column(JSON))
+    auto_roles: list | None = Field(default=None, sa_column=Column(JSON))
+    created_at: datetime | None = None
     data: dict = Field(default_factory=dict, sa_column=Column(JSON))
     field_origins: dict = Field(default_factory=dict, sa_column=Column(JSON))
     last_filled_from_resume_id: int | None = None
@@ -51,6 +60,7 @@ class MemoryCard(SQLModel, table=True):
     __tablename__ = "memory_cards"
 
     id: int | None = Field(default=None, primary_key=True)
+    profile_id: int | None = Field(default=None, index=True)  # Phase 2.8; unset = the active profile
     kind: str
     title: str
     text: str = Field(sa_column=Column(Text))
@@ -73,10 +83,12 @@ class RoleContext(SQLModel, table=True):
     row) and compared with every fetched job of that role."""
 
     __tablename__ = "role_contexts"
+    __table_args__ = (UniqueConstraint("profile_id", "role_key", name="uq_role_contexts_profile_role"),)
 
     id: int | None = Field(default=None, primary_key=True)
+    profile_id: int | None = Field(default=None, index=True)  # Phase 2.8; unset = the active profile
     role: str  # as written in Roles you want
-    role_key: str = Field(index=True, unique=True)  # lowercased, spaces collapsed
+    role_key: str = Field(index=True)  # lowercased, spaces collapsed; unique per profile
     status: str = "pending"  # pending | ready | failed
     error: str | None = None
     summary: str = Field(default="", sa_column=Column(Text))
@@ -463,9 +475,24 @@ def _add_missing_columns(engine) -> None:
                     conn.execute(text(f'ALTER TABLE "{table.name}" ADD COLUMN "{column.name}" {ddl}'))
 
 
+def _migrate_profiles(engine) -> None:
+    """Phase 2.8 (idempotent): cards and role contexts made before profiles belong to profile 1,
+    and a role context is unique per (profile, role) instead of per role."""
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE memory_cards SET profile_id = 1 WHERE profile_id IS NULL"))
+        conn.execute(text("UPDATE role_contexts SET profile_id = 1 WHERE profile_id IS NULL"))
+        unique = {r[1]: r[2] for r in conn.execute(text("PRAGMA index_list('role_contexts')"))}
+        if unique.get("ix_role_contexts_role_key") == 1:
+            conn.execute(text("DROP INDEX ix_role_contexts_role_key"))
+            conn.execute(text("CREATE INDEX ix_role_contexts_role_key ON role_contexts (role_key)"))
+            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_role_contexts_profile_role "
+                              "ON role_contexts (profile_id, role_key)"))
+
+
 def init_db() -> None:
     SQLModel.metadata.create_all(get_engine())
     _add_missing_columns(get_engine())
+    _migrate_profiles(get_engine())
     # Refresh the snapshot on every start, so it matches the live DB even after a restore.
     snapshots.schedule(data_dir() / "app.db")
 
@@ -492,14 +519,40 @@ def set_meta(session: Session, key: str, value: str) -> None:
     session.add(row)
 
 
+ACTIVE_PROFILE_KEY = "active_profile_id"
+
+
+def active_profile_id(session: Session) -> int:
+    """The profile in use (Phase 2.8): meta `active_profile_id`, else the first profile, else 1."""
+    v = get_meta(session, ACTIVE_PROFILE_KEY)
+    pid = int(v) if v and v.isdigit() else 1
+    if session.get(ProfileRow, pid) is None:
+        first = session.exec(select(ProfileRow.id).order_by(ProfileRow.id)).first()
+        pid = first if first is not None else pid
+    return pid
+
+
 def get_profile_row(session: Session) -> ProfileRow:
-    row = session.get(ProfileRow, 1)
+    """The active profile (created empty when there is none yet)."""
+    pid = active_profile_id(session)
+    row = session.get(ProfileRow, pid)
     if row is None:
-        row = ProfileRow(id=1, data={}, field_origins={})
+        row = ProfileRow(id=pid, name="My profile", data={}, field_origins={}, created_at=utcnow())
         session.add(row)
         session.commit()
         session.refresh(row)
     return row
+
+
+def _default_profile(_mapper, connection, target) -> None:
+    """A card or role context saved without a profile belongs to the active one."""
+    if target.profile_id is None:
+        v = connection.execute(text("SELECT value FROM meta WHERE key = :k"), {"k": ACTIVE_PROFILE_KEY}).scalar()
+        target.profile_id = int(v) if v and str(v).isdigit() else 1
+
+
+event.listen(MemoryCard, "before_insert", _default_profile)
+event.listen(RoleContext, "before_insert", _default_profile)
 
 
 def db_check() -> str:

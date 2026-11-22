@@ -15,7 +15,7 @@ from sqlmodel import Session, select
 
 from backend import vectors
 from backend.config import get_tuning
-from backend.db import MemoryCard, get_meta, get_profile_row, new_session, set_meta, utcnow
+from backend.db import MemoryCard, active_profile_id, get_meta, get_profile_row, new_session, set_meta, utcnow
 from backend.model import embedding_signature
 from backend.schemas import CardOut, MemoryOut, Profile
 
@@ -101,7 +101,9 @@ def card_out(c: MemoryCard) -> CardOut:
 
 
 def list_cards(session: Session) -> list[MemoryCard]:
-    return list(session.exec(select(MemoryCard).order_by(MemoryCard.position, MemoryCard.id)).all())
+    """The active profile's cards (Phase 2.8)."""
+    q = select(MemoryCard).where(MemoryCard.profile_id == active_profile_id(session))
+    return list(session.exec(q.order_by(MemoryCard.position, MemoryCard.id)).all())
 
 
 def is_stale(session: Session) -> bool:
@@ -137,7 +139,8 @@ def rebuild(session: Session) -> None:
     for pos, spec in enumerate(specs):
         card = by_ref.get(spec.source_ref)
         if card is None:
-            card = MemoryCard(kind=spec.kind, title=spec.title, text=spec.text, source_ref=spec.source_ref)
+            card = MemoryCard(kind=spec.kind, title=spec.title, text=spec.text, source_ref=spec.source_ref,
+                              profile_id=row.id)
         elif card.title == spec.title and card.text == spec.text and card.kind == spec.kind:
             card.position = pos
             session.add(card)

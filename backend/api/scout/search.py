@@ -1,6 +1,8 @@
 """Scout / Search: Job Search (Overview, Jobs, Search Settings, the JSearch search plan)."""
 from __future__ import annotations
 
+from datetime import date
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlmodel import Session, col, select
 
@@ -86,11 +88,13 @@ def autoscan(body: AutoscanToggle, session: Session = Depends(get_session)):
 @router.get("/jobs", response_model=JobsOut)
 def jobs(q: str | None = None, category: str | None = None, workplace: str | None = None,
          view: JobsView = "matches", max_years: float | None = None, apply: ApplyKind | None = None,
+         found_from: date | None = None, found_to: date | None = None, tz: str | None = None,
          session: Session = Depends(get_session)):
     """One Jobs-page tab: matches (undecided relevant; fits / other), selected, applied,
-    discarded, not_relevant, excluded."""
+    discarded, not_relevant, excluded. `found_from` / `found_to`: days the jobs were first found
+    (inclusive, in `tz`, e.g. Asia/Kolkata; default UTC); `days` lists every day with its count."""
     return job_views.list_jobs(session, q=q, category=category, workplace=workplace, view=view, max_years=max_years,
-                               apply=apply)
+                               apply=apply, found_from=found_from, found_to=found_to, tz=tz)
 
 
 @router.post("/jobs/decide", response_model=dict)

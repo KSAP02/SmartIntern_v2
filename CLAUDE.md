@@ -18,17 +18,23 @@ seams that keep the project easy to change, everything in Docker. §1 describes 
 | 2.5 JSearch-only, budget-planned search (query plan, request budget, scan picker, combined OR, decisions, per-request results, JSearch analytics) | 🔍 built, used live (22 requests by 2026-11-20) | `phase_2_5_jsearch_budgeted_search.md` (§17 + "Added" notes) |
 | 2.6 Role contexts + search precision, then **simplified on 2026-11-20** (see "Changed 2026-11-20" notes in the doc): criteria only shape the scan, Scan now = roles / location / date / editable query + the exact request, years = Jobs-page filter, location highlighted not filtered, daily-limit switch | 🔍 built; **user says JSearch now works well enough** (2026-11-20) → mark 2 / 2.5 / 2.6 ✅ after a last UI look | `phase_2_6_role_contexts_and_search_precision.md` |
 | 2.7 More sources for **jobs in India** (or remote and open to India; no international-only sources): A source refactor + Jooble, B company ATS boards + Companies list, C remote feeds (open-to-India only), D careers-page reader if needed | 🔍 **all steps built 2026-11-22** except Jooble (parked by the user) and Rippling (not built: apply flow unconfirmed): A0 sources + apply route; A1/A2 company boards (Greenhouse / Lever / Ashby / SmartRecruiters) + 34 starter companies, system-managed; **A3** companies found automatically; **A4** Workable + Recruitee; **C1** remote feeds Himalayas / RemoteJobs.org / Remotive (open to India only); **E** (2026-11-22) company finder (seed list + careers pages + name guesses + Common Crawl index), Indian boards Keka / Darwinbox / Zoho Recruit (finding only: CAPTCHA forms), weekly reads of quiet boards, one row per scan. **User tests on localhost; no deploy / push until then** → ✅ |  `phase_2_7_india_first_multi_source_discovery.md` |
+| 2.8 Multiple profiles: several profiles (from a resume or a copy), one active; memory cards, role contexts and roles follow it; jobs shared and re-scored on a switch | 🔍 built 2026-11-23; **user tests on localhost** | `phase_2_8_multiple_profiles.md` |
 | 3–6 Scoring + agent selection / prepare applications / daily agent / controlled automation (apply) | later | `README.md` in the phase folder |
 | 7 Deploy | 🟡 partly: **deployed 2026-11-20** (frontend on Vercel, backend on Render; commit 859a7af). Still open: Postgres, S3 file storage, Milvus server / Zilliz, login (OAuth); persistence of SQLite / Milvus Lite / resume files on Render to confirm | `README.md` in the phase folder |
 
-Backend tests: 224 green (`docker compose run --rm --no-deps backend pytest backend/tests -q`).
+Backend tests: 228 green (`docker compose run --rm --no-deps backend pytest backend/tests -q`).
 Frontend: `cd frontend && npm run typecheck && npm run build`. Stack: `docker compose up --build -d`.
 Git: on `main`, pushed to `origin` (first commits 2026-11-20: initial, README, deploy prep, Desk About card).
 Commit / push only when the user asks.
 
 ### ▶ Next session: start here
 
-1. **Phase 2.7 (India scope, form-first)** — built 2026-11-22 (2.7 doc "Build notes": A0, A1,
+0. **Phase 2.8 (multiple profiles)** — built 2026-11-23, user tests on localhost (no push until
+   they say). `services/profiles.py`, meta `active_profile_id`; `memory_cards.profile_id`,
+   `role_contexts.profile_id` (unique per profile); the active profile's roles live in the
+   criteria and are swapped on a switch (`search_settings.swap_in_roles`). Anything new that
+   reads cards or role contexts must filter by `active_profile_id`.
+1. **Phase 2.7 (India scope, form-first)** — built 2026-11-22 (committed + pushed 2026-11-23, 4db5d06) (2.7 doc "Build notes": A0, A1,
    A2, A3, A4, C1, **E**). **The user tests everything on localhost first; do not deploy, commit
    or push until they say so** (user, 2026-11-22: make search + filtering as good and efficient as
    possible before deploying). Then mark 2.7 ✅. **E:** the company finder
@@ -101,7 +107,9 @@ Commit / push only when the user asks.
 - **Jobs** (`/job-search/jobs`): tabs Matches / Selected / Applied / Discarded / Not relevant
   (+ Excluded only while old excluded jobs remain); filters: search, job type, workplace, and
   on Matches **Experience asked** (`?max_years=`; jobs that don't state years stay; remembered
-  in the browser). Rows show years asked and the **location against the place searched**
+  in the browser); **Date found** (2026-11-23: any day / today / yesterday / last 7 or 30 days /
+  each day with jobs and its count / custom range; `?found_from=&found_to=&tz=`, days counted in
+  the browser's timezone, `JobsOut.days`). Rows show years asked and the **location against the place searched**
   (`job_facts.place_check`: in it = bold, elsewhere = amber "(not Karnataka)", area not stated,
   remote). Select / Discard / Mark applied / Undo, bulk, "Select these & discard the rest";
   **Move to matches** / **Not relevant** (`jobs.relevance_override`); **Add title to my roles**.

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter, defaultdict
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlmodel import Session, col, func, select
@@ -13,6 +13,7 @@ from backend.job_schemas import (
     ApplyPreset,
     CardRef,
     Coverage,
+    FoundDay,
     DayCount,
     FetchRunOut,
     JobCard,
@@ -171,8 +172,24 @@ def _view_filter(view: str):
     return col(Job.pipeline_status).in_(LISTED) & (Job.decision == None)  # noqa: E711
 
 
+def _zone(tz: str | None) -> ZoneInfo:
+    try:
+        return ZoneInfo(tz) if tz else ZoneInfo("UTC")
+    except Exception:  # noqa: BLE001 - unknown name from the browser: UTC
+        return ZoneInfo("UTC")
+
+
+def found_day(job: Job, zone: ZoneInfo) -> date:
+    """The day a job was first found, in your timezone."""
+    t = job.first_seen_at
+    if t.tzinfo is None:
+        t = t.replace(tzinfo=ZoneInfo("UTC"))
+    return t.astimezone(zone).date()
+
+
 def list_jobs(session: Session, q: str | None = None, category: str | None = None, workplace: str | None = None,
-              view: str = "matches", max_years: float | None = None, apply: str | None = None) -> JobsOut:
+              view: str = "matches", max_years: float | None = None, apply: str | None = None,
+              found_from: date | None = None, found_to: date | None = None, tz: str | None = None) -> JobsOut:
     preset = search_settings.get(session, "preset")
     jobs = list(session.exec(select(Job).where(_view_filter(view)).order_by(col(Job.first_seen_at).desc())).all())
     if category:
@@ -186,6 +203,13 @@ def list_jobs(session: Session, q: str | None = None, category: str | None = Non
     if q:
         needle = q.lower()
         jobs = [j for j in jobs if needle in f"{j.title} {j.company_name or ''} {j.location_text or ''}".lower()]
+    # Date found (your timezone): the day list counts every day, then the range filters.
+    zone = _zone(tz)
+    day_of = {j.id: found_day(j, zone) for j in jobs}
+    per_day = Counter(day_of.values())
+    days = [FoundDay(date=d.isoformat(), count=n) for d, n in sorted(per_day.items(), reverse=True)]
+    if found_from or found_to:
+        jobs = [j for j in jobs if (not found_from or day_of[j.id] >= found_from) and (not found_to or day_of[j.id] <= found_to)]
     titles = _card_titles(session, {j.relevance_card_id for j in jobs if j.relevance_card_id})
     places = searched_places(session, jobs)
     cards = [job_card(j, preset, titles, places) for j in jobs]
@@ -205,7 +229,7 @@ def list_jobs(session: Session, q: str | None = None, category: str | None = Non
     counts["other"] = len(undecided) - counts["fits"]
     for v in ("selected", "applied", "discarded", "not_relevant", "excluded"):
         counts[v] = int(session.exec(select(func.count()).select_from(Job).where(_view_filter(v))).one())
-    return JobsOut(view=view, fits=fits, other=other, items=items, counts=counts)
+    return JobsOut(view=view, fits=fits, other=other, items=items, counts=counts, days=days)
 
 
 def job_detail(session: Session, job: Job) -> JobDetail:

@@ -1,10 +1,13 @@
-"""Records / My Profile: the profile."""
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+"""Records / My Profile: the active profile, and (Phase 2.8) the list of profiles."""
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
 from sqlmodel import Session
 
 from backend.db import get_session
-from backend.schemas import FillPreview, FillRequest, FillResult, Profile, ProfileOut, RegroupRequest, RegroupResult
-from backend.services import memory, skill_groups
+from backend.schemas import (
+    FillPreview, FillRequest, FillResult, Profile, ProfileCreate, ProfileOut, ProfileRename, ProfilesOut, RegroupRequest,
+    RegroupResult,
+)
+from backend.services import memory, profiles, skill_groups
 from backend.services import profile as svc
 
 router = APIRouter(prefix="/records/profile", tags=["records: profile"])
@@ -46,3 +49,48 @@ def regroup_skills(body: RegroupRequest):
 @router.post("/confirm", response_model=ProfileOut)
 def confirm(session: Session = Depends(get_session)):
     return svc.confirm(session)
+
+
+# ── several profiles (Phase 2.8) ───────────────────────────────────────────────
+
+
+def _errors(fn):
+    try:
+        return fn()
+    except profiles.NotFound as e:
+        raise HTTPException(404, str(e)) from e
+    except profiles.Conflict as e:
+        raise HTTPException(409, str(e)) from e
+
+
+@router.get("/profiles", response_model=ProfilesOut)
+def list_profiles(session: Session = Depends(get_session)):
+    """Every profile, which one is active, and the switch in progress (if any)."""
+    return profiles.summaries(session)
+
+
+@router.post("/profiles", response_model=ProfilesOut, status_code=status.HTTP_201_CREATED)
+def create_profile(body: ProfileCreate, session: Session = Depends(get_session)):
+    """New profile from a resume (`resume_id`) or a copy (`copy_of`). It isn't made active."""
+    _errors(lambda: profiles.create(session, body.name, body.resume_id, body.copy_of))
+    return profiles.summaries(session)
+
+
+@router.patch("/profiles/{profile_id}", response_model=ProfilesOut)
+def rename_profile(profile_id: int, body: ProfileRename, session: Session = Depends(get_session)):
+    _errors(lambda: profiles.rename(session, profile_id, body.name, body.resume_id))
+    return profiles.summaries(session)
+
+
+@router.delete("/profiles/{profile_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_profile(profile_id: int, session: Session = Depends(get_session)):
+    _errors(lambda: profiles.remove(session, profile_id))
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/profiles/{profile_id}/activate", response_model=ProfilesOut, status_code=status.HTTP_202_ACCEPTED)
+def activate_profile(profile_id: int, session: Session = Depends(get_session)):
+    """Switch: cards, role contexts and roles follow at once; jobs are re-scored in the background."""
+    _errors(lambda: profiles.activate(session, profile_id))
+    session.expire_all()
+    return profiles.summaries(session)

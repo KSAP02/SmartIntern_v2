@@ -113,6 +113,37 @@ export interface ProfileOut {
   updated_at: string | null;
   completeness: number;
   memory_stale: boolean;
+  /** Phase 2.8: the active profile. */
+  profile_id: number | null;
+  profile_name: string | null;
+  resume_id: number | null;
+}
+
+export interface ProfileSummary {
+  id: number;
+  name: string;
+  resume_id: number | null;
+  resume_label: string | null;
+  active: boolean;
+  completeness: number;
+  roles: string[];
+  cards: number;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface SwitchState {
+  running: boolean;
+  profile_id: number | null;
+  step: string | null;
+  error: string | null;
+  finished_at: string | null;
+}
+
+export interface ProfilesOut {
+  profiles: ProfileSummary[];
+  active_id: number;
+  switching: SwitchState;
 }
 
 export type FillMode = "empty_only" | "replace";
@@ -601,6 +632,8 @@ export interface JobsOut {
   items: JobCard[];
   /** fits, other, selected, applied, discarded, not_relevant, excluded */
   counts: Record<string, number>;
+  /** Days this tab's jobs were found (other filters applied, not the date one), newest first. */
+  days: { date: string; count: number }[];
 }
 
 export interface CardRef {
@@ -651,6 +684,11 @@ export interface JobsQuery {
   max_years?: number;
   /** form = the agent can apply; direct / account / aggregator / platform. */
   apply?: ApplyKind;
+  /** Day found, inclusive, YYYY-MM-DD in `tz`. */
+  found_from?: string;
+  found_to?: string;
+  /** Your timezone (IANA name), so days match your calendar. */
+  tz?: string;
 }
 
 // ── JSearch search plan + request budget (Phase 2.5) ─────────────────────────

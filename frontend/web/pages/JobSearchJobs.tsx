@@ -19,6 +19,39 @@ const YEARS_OPTS = [0, 1, 2, 3, 5, 8];
 const YEARS_KEY = "jobs.maxYears";
 const APPLY_OPTS = (Object.keys(APPLY_KIND_LABEL) as ApplyKind[]).map((v) => ({ value: v, label: APPLY_KIND_LABEL[v] }));
 
+// ── Date found ────────────────────────────────────────────────────────────────
+
+const TZ = (() => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {
+    return undefined;
+  }
+})();
+const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const daysAgo = (n: number) => {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return isoDay(d);
+};
+const dayLabel = (iso: string) => {
+  const label = new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+  return iso === daysAgo(0) ? `Today, ${label}` : iso === daysAgo(1) ? `Yesterday, ${label}` : label;
+};
+
+/** "" any · today · yesterday · 7 / 30 (last N days) · day:YYYY-MM-DD · custom */
+type DateSel = string;
+
+function dateRange(sel: DateSel, custom: { from: string; to: string }): { from?: string; to?: string } {
+  if (sel === "today") return { from: daysAgo(0), to: daysAgo(0) };
+  if (sel === "yesterday") return { from: daysAgo(1), to: daysAgo(1) };
+  if (sel === "7") return { from: daysAgo(6) };
+  if (sel === "30") return { from: daysAgo(29) };
+  if (sel.startsWith("day:")) return { from: sel.slice(4), to: sel.slice(4) };
+  if (sel === "custom") return { from: custom.from || undefined, to: custom.to || undefined };
+  return {};
+}
+
 function savedMaxYears(): number | null {
   try {
     const v = localStorage.getItem(YEARS_KEY);
@@ -125,7 +158,9 @@ function JobRow({ job, view, checked, onCheck, onOpen, onDecide, onAddTitle, onM
           {job.min_years_experience != null && <Badge>{job.min_years_experience === 0 ? "No experience asked" : `${job.min_years_experience}+ yrs asked`}</Badge>}
           {job.country_codes.length > 0 && <Badge>{job.country_codes.join(", ")}</Badge>}
           {pay && <Badge tone={job.compensation_type === "unpaid" ? "neutral" : "accent"}>{pay}</Badge>}
-          <span className="text-[11px] text-zinc-400">found {foundAgo(job.first_seen_at)}</span>
+          <span className="text-[11px] text-zinc-400" title={`Found ${new Date(job.first_seen_at).toLocaleString()}`}>
+            found {foundAgo(job.first_seen_at)}
+          </span>
         </div>
         {(view === "not_relevant" || view === "excluded") && job.status_reason && (
           <p className="mt-1.5 text-[11px] text-zinc-500">{job.status_reason}</p>
@@ -185,6 +220,9 @@ export default function JobSearchJobs() {
   const [workplace, setWorkplace] = useState<Workplace | null>(null);
   const [maxYears, setMaxYears] = useState<number | null>(savedMaxYears);
   const [applyKind, setApplyKind] = useState<ApplyKind | null>(null);
+  const [dateSel, setDateSel] = useState<DateSel>("");
+  const [custom, setCustom] = useState({ from: "", to: "" });
+  const range = dateRange(dateSel, custom);
   const [otherOpen, setOtherOpen] = useState(true);
   const [openId, setOpenId] = useState<number | null>(null);
   const [checked, setChecked] = useState<Set<number>>(new Set());
@@ -205,6 +243,9 @@ export default function JobSearchJobs() {
       view,
       max_years: view === "matches" && maxYears != null ? maxYears : undefined,
       apply: applyKind ?? undefined,
+      found_from: range.from,
+      found_to: range.to,
+      tz: TZ,
     }),
   );
 
@@ -216,7 +257,7 @@ export default function JobSearchJobs() {
     }
     setChecked(new Set());
     void reload();
-  }, [query, category, workplace, view, maxYears, applyKind, reload]);
+  }, [query, category, workplace, view, maxYears, applyKind, range.from, range.to, reload]);
 
   useEffect(() => {
     try {
@@ -227,7 +268,13 @@ export default function JobSearchJobs() {
   }, [maxYears]);
 
   const shown: JobCard[] = useMemo(() => (data ? (view === "matches" ? [...data.fits, ...data.other] : data.items) : []), [data, view]);
-  const filtered = !!(query || category || workplace || applyKind || (view === "matches" && maxYears != null));
+  const filtered = !!(query || category || workplace || applyKind || range.from || range.to || (view === "matches" && maxYears != null));
+  // Days with jobs in this tab; a picked day stays in the list even when other filters hide it.
+  const days = useMemo(() => {
+    const list = data?.days ?? [];
+    const picked = dateSel.startsWith("day:") ? dateSel.slice(4) : null;
+    return picked && !list.some((d) => d.date === picked) ? [{ date: picked, count: 0 }, ...list] : list;
+  }, [data, dateSel]);
   const counts = data?.counts ?? {};
   const current = VIEWS.find((v) => v.id === view)!;
 
@@ -333,6 +380,33 @@ export default function JobSearchJobs() {
           <FilterChips label="Job type" value={category} onChange={setCategory} options={CATEGORY_OPTS} />
           <FilterChips label="Workplace" value={workplace} onChange={setWorkplace} options={WORKPLACE_OPTS} />
           <FilterChips label="Apply via" value={applyKind} onChange={setApplyKind} options={APPLY_OPTS} />
+          <label className="flex items-center gap-2 text-xs text-zinc-500" title="The day a scan first found the job (your timezone).">
+            Date found
+            <Select value={dateSel} onChange={(e) => setDateSel(e.target.value)} className="w-auto py-1 text-xs">
+              <option value="">Any day</option>
+              <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
+              <option value="7">Last 7 days</option>
+              <option value="30">Last 30 days</option>
+              <option value="custom">Custom range…</option>
+              {days.length > 0 && (
+                <optgroup label="Days with jobs in this tab">
+                  {days.slice(0, 60).map((d) => (
+                    <option key={d.date} value={`day:${d.date}`}>
+                      {dayLabel(d.date)} · {d.count} job{d.count === 1 ? "" : "s"}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </Select>
+          </label>
+          {dateSel === "custom" && (
+            <span className="flex items-center gap-1.5 text-xs text-zinc-500">
+              <Input type="date" aria-label="Found from" value={custom.from} max={custom.to || undefined} onChange={(e) => setCustom((c) => ({ ...c, from: e.target.value }))} className="h-8 w-auto py-1 text-xs" />
+              to
+              <Input type="date" aria-label="Found to" value={custom.to} min={custom.from || undefined} onChange={(e) => setCustom((c) => ({ ...c, to: e.target.value }))} className="h-8 w-auto py-1 text-xs" />
+            </span>
+          )}
           {view === "matches" && (
             <label className="flex items-center gap-2 text-xs text-zinc-500" title="Jobs that don't say how many years they ask for always stay.">
               Experience asked

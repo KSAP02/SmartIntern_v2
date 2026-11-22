@@ -8,7 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
 from sqlmodel import Session
 
 from backend.config import get_tuning
-from backend.db import MemoryCard, RoleContext, get_session, utcnow
+from backend.db import MemoryCard, RoleContext, active_profile_id, get_session, utcnow
 from backend.job_schemas import RoleContextOut, RoleContextPatch, RoleMatch, RoleTest
 from backend.schemas import CardCreate, CardOut, CardPatch, MemoryOut
 from backend.services import compass, job_search, memory, role_contexts, search_settings
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/records/memory", tags=["records: memory"])
 
 def _get(session: Session, card_id: int) -> MemoryCard:
     c = session.get(MemoryCard, card_id)
-    if c is None:
+    if c is None or c.profile_id != active_profile_id(session):  # another profile's card
         raise HTTPException(404, f"Card {card_id} not found.")
     return c
 
@@ -36,7 +36,7 @@ def list_cards(session: Session = Depends(get_session)):
 def add_card(body: CardCreate, background: BackgroundTasks, session: Session = Depends(get_session)):
     position = max((c.position for c in memory.list_cards(session)), default=-1) + 1
     c = MemoryCard(kind="custom", title=body.title.strip()[:200], text=_clip(body.text), origin="user", position=position,
-                   embedding_status="none")
+                   embedding_status="none", profile_id=active_profile_id(session))
     session.add(c)
     session.commit()
     session.refresh(c)

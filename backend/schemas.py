@@ -151,6 +151,54 @@ class ProfileOut(BaseModel):
     updated_at: datetime | None
     completeness: int  # 0-100
     memory_stale: bool
+    # Phase 2.8: which profile this is (the active one).
+    profile_id: int | None = None
+    profile_name: str | None = None
+    resume_id: int | None = None  # the resume it is built on
+
+
+class ProfileSummary(BaseModel):
+    """One profile in the switcher (Phase 2.8)."""
+
+    id: int
+    name: str
+    resume_id: int | None
+    resume_label: str | None
+    active: bool
+    completeness: int
+    roles: list[str]
+    cards: int
+    created_at: datetime | None
+    updated_at: datetime | None
+
+
+class SwitchState(BaseModel):
+    """After a switch: cards built, role contexts written, jobs re-scored (background)."""
+
+    running: bool = False
+    profile_id: int | None = None
+    step: str | None = None
+    error: str | None = None
+    finished_at: datetime | None = None
+
+
+class ProfilesOut(BaseModel):
+    profiles: list[ProfileSummary]
+    active_id: int
+    switching: SwitchState
+
+
+class ProfileCreate(BaseModel):
+    """New profile: from a parsed resume, or a copy of another profile."""
+
+    name: str | None = Field(default=None, max_length=80)
+    resume_id: int | None = None
+    copy_of: int | None = None
+
+
+class ProfileRename(BaseModel):
+    name: str | None = Field(default=None, max_length=80)
+    resume_id: int | None = None
 
 
 FillMode = Literal["empty_only", "replace"]

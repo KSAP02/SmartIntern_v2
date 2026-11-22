@@ -21,7 +21,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlmodel import Session, col, select
 
 from backend.config import get_tuning
-from backend.db import Job, MemoryCard, RoleContext, get_profile_row, new_session, utcnow
+from backend.db import Job, MemoryCard, RoleContext, active_profile_id, get_profile_row, new_session, utcnow
 from backend.job_schemas import RoleContextOut, RoleContextPatch, RoleMatch, RoleRef
 from backend.model import chat_structured, embed, embedding_signature
 from backend.schemas import Profile
@@ -157,17 +157,26 @@ def _embed(rc: RoleContext) -> None:
     rc.embedding, rc.embedding_signature = vec, embedding_signature()
 
 
-def generate(role: str, *, force: bool = False) -> RoleContext | None:
-    """Write (or rewrite) the context for `role`. Skips a context you edited unless `force`."""
+def _mine(session: Session, profile_id: int | None = None):
+    """Role contexts of a profile (default: the active one; Phase 2.8)."""
+    pid = profile_id if profile_id is not None else active_profile_id(session)
+    return select(RoleContext).where(RoleContext.profile_id == pid)
+
+
+def generate(role: str, *, force: bool = False, profile_id: int | None = None) -> RoleContext | None:
+    """Write (or rewrite) the active profile's context for `role`. Skips a context you edited
+    unless `force`. `profile_id`: only if that profile is still the active one (it is written
+    from the active profile's cards)."""
     with _lock, new_session() as s:
         key = role_key(role)
-        if not key:
+        pid = active_profile_id(s)
+        if not key or (profile_id is not None and profile_id != pid):
             return None
-        rc = s.exec(select(RoleContext).where(RoleContext.role_key == key)).first()
+        rc = s.exec(_mine(s, pid).where(RoleContext.role_key == key)).first()
         if rc and not force and (rc.edited or rc.status == "ready"):
             return rc  # written already (Regenerate passes force)
         if rc is None:
-            rc = RoleContext(role=role.strip(), role_key=key)
+            rc = RoleContext(role=role.strip(), role_key=key, profile_id=pid)
         rc.status, rc.error = "pending", None
         s.add(rc)
         s.commit()
@@ -205,10 +214,12 @@ def generate(role: str, *, force: bool = False) -> RoleContext | None:
         return rc
 
 
-def ensure_for_roles(roles: list[str] | None = None) -> int:
-    """Write contexts for roles that have none yet (or whose last try failed). Background task."""
-    if roles is None:
-        with new_session() as s:
+def ensure_for_roles(roles: list[str] | None = None, profile_id: int | None = None) -> int:
+    """Write the active profile's contexts for roles that have none yet (or whose last try
+    failed). Background task. Stops if `profile_id` is given and stops being the active one."""
+    with new_session() as s:
+        pid = profile_id if profile_id is not None else active_profile_id(s)
+        if roles is None:
             roles = search_settings.get(s, "criteria").roles
     done = 0
     for role in roles:
@@ -216,9 +227,11 @@ def ensure_for_roles(roles: list[str] | None = None) -> int:
         if not key:
             continue
         with new_session() as s:
-            rc = s.exec(select(RoleContext).where(RoleContext.role_key == key)).first()
+            if active_profile_id(s) != pid:
+                break  # you switched profile meanwhile
+            rc = s.exec(_mine(s, pid).where(RoleContext.role_key == key)).first()
         if rc is None or rc.status in ("failed", "pending") and not rc.edited:
-            if generate(role):
+            if generate(role, profile_id=pid):
                 done += 1
     return done
 
@@ -239,12 +252,13 @@ def _safe(fn, *a):
 
 
 def get(session: Session, context_id: int) -> RoleContext | None:
-    return session.get(RoleContext, context_id)
+    rc = session.get(RoleContext, context_id)
+    return rc if rc is not None and rc.profile_id == active_profile_id(session) else None
 
 
 def for_roles(session: Session, roles: list[str]) -> dict[str, RoleContext]:
     keys = {role_key(r) for r in roles}
-    return {rc.role_key: rc for rc in session.exec(select(RoleContext)).all() if rc.role_key in keys}
+    return {rc.role_key: rc for rc in session.exec(_mine(session)).all() if rc.role_key in keys}
 
 
 def context_vectors(session: Session) -> dict[str, list[float]]:
@@ -252,7 +266,7 @@ def context_vectors(session: Session) -> dict[str, list[float]]:
     sig = embedding_signature()
     out: dict[str, list[float]] = {}
     stale: list[RoleContext] = []
-    for rc in session.exec(select(RoleContext).where(RoleContext.status == "ready")).all():
+    for rc in session.exec(_mine(session).where(RoleContext.status == "ready")).all():
         if rc.embedding and rc.embedding_signature == sig:
             out[rc.role_key] = rc.embedding
         else:
@@ -270,7 +284,7 @@ def context_vectors(session: Session) -> dict[str, list[float]]:
 def search_terms(session: Session) -> dict[str, tuple[list[str], list[str]]]:
     """role key -> (search titles, keywords) for query wording."""
     return {rc.role_key: (list(rc.search_titles or []), list(rc.keywords or []))
-            for rc in session.exec(select(RoleContext)).all() if rc.status == "ready"}
+            for rc in session.exec(_mine(session)).all() if rc.status == "ready"}
 
 
 def update(session: Session, rc: RoleContext, patch: RoleContextPatch) -> RoleContext:
@@ -337,7 +351,7 @@ def list_out(session: Session) -> list[RoleContextOut]:
     """Your roles in your order (a placeholder for roles still being written), then contexts
     of roles you removed (kept, so re-adding a role reuses its context)."""
     roles = search_settings.get(session, "criteria").roles
-    rows = {rc.role_key: rc for rc in session.exec(select(RoleContext)).all()}
+    rows = {rc.role_key: rc for rc in session.exec(_mine(session)).all()}
     result: list[RoleContextOut] = []
     for r in roles:
         rc = rows.pop(role_key(r), None)

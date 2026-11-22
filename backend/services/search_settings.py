@@ -1,7 +1,9 @@
 """Job Search settings.
 
 - criteria, preset: saved in the DB (`app_settings`) from Job Search -> Search Settings;
-  `[scout.search.<section>]` in settings/config.toml holds their defaults.
+  `[scout.search.<section>]` in settings/config.toml holds their defaults. Since Phase 2.8 the
+  criteria's `roles` / `auto_roles` are the active profile's: each profile keeps its own copy
+  (`profile.roles`), kept in step on save and swapped in on a switch (`profiles.activate`).
   Precedence: saved setting > config.toml > code default (the pydantic model).
 - sources, schedule, limits, matching: live in config.toml only (System -> Admin settings
   writes the file; hand edits apply within seconds).
@@ -66,6 +68,21 @@ def get(session: Session, section: str) -> BaseModel:
         return default(section)
 
 
+def _save_roles(session: Session, roles: list[str], auto_roles: list[str]) -> None:
+    """Keep the active profile's copy of its roles in step (Phase 2.8)."""
+    from backend.db import get_profile_row
+
+    row = get_profile_row(session)
+    row.roles, row.auto_roles = list(roles), list(auto_roles)
+    session.add(row)
+
+
+def swap_in_roles(session: Session, roles: list[str], auto_roles: list[str]) -> None:
+    """A profile switch: its roles become the search criteria's (not committed)."""
+    crit = get(session, "criteria").model_copy(update={"roles": list(roles), "auto_roles": list(auto_roles)})
+    _save(session, "criteria", crit)
+
+
 def get_all(session: Session) -> SearchSettings:
     return SearchSettings(**{name: get(session, name) for name in SECTIONS})
 
@@ -93,6 +110,8 @@ def patch(session: Session, body: SettingsPatch) -> tuple[SearchSettings, set[st
         if new.model_dump() != get(session, name).model_dump():
             changed.add(name)
         _save(session, name, new)
+        if name == "criteria":
+            _save_roles(session, new.roles, new.auto_roles)
     session.commit()
     return get_all(session), changed
 
@@ -101,7 +120,10 @@ def reset(session: Session, section: str) -> SearchSettings:
     row = session.get(AppSetting, section)
     if row:
         session.delete(row)
-        session.commit()
+    if section == "criteria":
+        d = default(section)
+        _save_roles(session, d.roles, d.auto_roles)
+    session.commit()
     return get_all(session)
 
 
