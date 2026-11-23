@@ -388,11 +388,35 @@ quiet_board_days = 7
 # Run the company finder at all.
 enabled = true
 
-# Start the finder in the background after each scan (when it isn't already running).
-run_after_scan = true
+# Run by itself while the backend runs (user, 2026-11-23): one run after another while companies
+# are waiting, then a look every idle_check_hours. Never during a scan. Admin -> Company finder
+# shows every run.
+auto = true
 
-# Companies checked per finder run.
-leads_per_run = 40
+# Seconds between the end of one run and the start of the next while companies are waiting.
+pause_between_runs_seconds = 30
+
+# When nothing is waiting: hours between two looks (new Common Crawl crawl, YC list, re-check dates).
+idle_check_hours = 6.0
+
+# After a failed run: minutes before the next try.
+error_backoff_minutes = 15.0
+
+# Start the finder in the background after each scan (when it isn't already running).
+# Off for now (user, 2026-11-23): run it from Admin settings -> Company finder; automated later
+# with the agent.
+run_after_scan = false
+
+# Companies whose board has to be searched for (seed list, YC list: careers page, then the
+# name tried on each board system) checked per finder run. Slow: several requests each.
+leads_per_run = 50
+
+# Companies whose board is already known (Common Crawl, careers links) checked per finder run.
+# Fast: one board read each, one board system at a time per system, systems in parallel.
+board_checks_per_run = 500
+
+# Add Y Combinator companies based in India (the free daily YC open-data list, read weekly).
+yc_list = true
 
 # Seconds to wait between two requests to boards and careers pages.
 delay_seconds = 1.0
@@ -409,11 +433,15 @@ no_board_recheck_days = 90
 # Read board addresses from the Common Crawl URL index (free, public).
 crawl = true
 
-# Seconds between two Common Crawl index requests (their guidance: slow, one at a time).
-crawl_delay_seconds = 5.0
+# Seconds between two Common Crawl index file requests (one at a time).
+crawl_delay_seconds = 0.5
 
-# Common Crawl index pages read per finder run (each page lists many board addresses).
-crawl_pages_per_run = 4
+# Common Crawl index blocks read per finder run (3,000 addresses each, ~250 KB). One monthly
+# crawl is ~50 blocks for all board systems (~12,000 companies, Oct 2026).
+crawl_pages_per_run = 60
+
+# How many of the newest monthly crawls to read (newest first; each adds companies the others missed).
+crawl_collections = 3
 
 
 # ---- Remote-job feeds (Phase 2.7 C1) ----------------------------------------

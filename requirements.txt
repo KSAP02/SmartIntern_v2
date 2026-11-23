@@ -4,6 +4,8 @@ uvicorn[standard]
 pydantic-settings
 python-multipart
 sqlmodel
+# Postgres driver: used when DATABASE_URL is set (SQLite otherwise)
+psycopg[binary]
 openai
 pymilvus
 milvus-lite

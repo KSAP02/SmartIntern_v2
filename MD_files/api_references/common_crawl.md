@@ -1,5 +1,27 @@
 # Common Crawl URL index (Phase 2.7 E: board addresses for the company finder)
 
+## What we use since 2026-11-23: the index files (cluster.idx + cdx blocks)
+
+The CDX query server below answered **every** query with HTTP 504 after ~10 s on 2026-11-23
+(even a one-URL lookup, on two crawls), so `crawl_index.py` reads the index **files** instead,
+from `https://data.commoncrawl.org/cc-index/collections/<crawl>/indexes/` (Amazon S3, anonymous
+HTTPS, byte ranges supported; checked live):
+- `cluster.idx` (~104 MB for CC-MAIN-2026-43): sorted by SURT key, one line per block of 3,000
+  index rows: `<surt key> <timestamp>\t<cdx-000NN.gz>\t<offset>\t<length>\t<block no>`.
+  Binary-searched with 16 KB range requests (~10 per prefix), then read forward 256 KB at a time.
+- `cdx-000NN.gz` at `offset`/`length`: one gzip member (~200–300 KB) = 3,000 rows
+  `<surt key> <timestamp> {"url": ..., "status": ..., ...}`.
+- SURT prefixes: `co,lever,jobs)/`, `io,greenhouse,boards)/`, `io,greenhouse,job-boards)/`,
+  `com,ashbyhq,jobs)/`, `com,workable,apply)/`, `com,smartrecruiters,jobs)/`, `com,recruitee,`,
+  `com,keka,`, `in,darwinbox,`, `in,zohorecruit,`, `com,zohorecruit,`. The block **before** the first
+  matching line is read too (its tail can hold the first rows).
+- **Measured (CC-MAIN-2026-43):** ~50 blocks, ~12 MB, ~1 min with 0.5 s pauses → **12,353**
+  company boards (Greenhouse ~3,900 across both hosts, Workable ~3,800, Ashby ~1,000, Recruitee
+  ~800, SmartRecruiters ~640, Lever ~270, Zoho Recruit ~210, Keka ~180, Darwinbox ~15).
+- `collinfo.json` (still on index.commoncrawl.org, a static file) worked throughout.
+
+## The CDX query server (first design, 2026-11-22; not used any more)
+
 Collected 2026-11-22 from https://pywb.readthedocs.io/en/latest/manual/cdxserver_api.html,
 https://commoncrawl.org/faq and https://commoncrawl.org/terms-of-use; `collinfo.json` checked live
 (3 small queries returned 504: the server is slow; plan for retries).

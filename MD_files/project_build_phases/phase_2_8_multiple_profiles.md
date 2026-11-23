@@ -39,7 +39,7 @@ Decisions (user, 2026-11-23):
 
 ## How it is built
 
-### Data (`backend/db.py`, `MD_files/database.md`)
+### Data (`backend/db.py`, `MD_files/project_notes/database.md`)
 
 | Change | Detail |
 | --- | --- |

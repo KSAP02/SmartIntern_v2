@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ComponentType } from "react";
 import { Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
-import { BarChart3, Brain, ChevronDown, ChevronRight, FileCog, FileStack, LayoutDashboard, Menu, Moon, Radar, SlidersHorizontal, Sun, UserRound, X } from "lucide-react";
+import { BarChart3, Brain, Building2, ChevronDown, ChevronRight, FileCog, FileStack, LayoutDashboard, Menu, Moon, Radar, SlidersHorizontal, Sun, UserRound, X } from "lucide-react";
 import { api } from "./lib/api";
 import { cx } from "./lib/util";
 import { PROFILE_EVENT } from "./components/ProfileBar";
@@ -16,6 +16,7 @@ import JobSearchJobs from "./pages/JobSearchJobs";
 import JobSearchSettings from "./pages/JobSearchSettings";
 import AdminSettings from "./pages/AdminSettings";
 import JSearchAnalytics from "./pages/JSearchAnalytics";
+import CompanyFinderAnalytics from "./pages/CompanyFinderAnalytics";
 
 interface NavItem {
   to: string;
@@ -63,6 +64,7 @@ const NAV: { wing: string; items: NavItem[] }[] = [
     items: [
       { to: "/admin", label: "Admin settings", icon: FileCog },
       { to: "/jsearch", label: "JSearch analytics", icon: BarChart3 },
+      { to: "/company-finder", label: "Company finder", icon: Building2 },
       { to: "/switchboard", label: "Switchboard", icon: SlidersHorizontal },
     ],
   },
@@ -308,6 +310,7 @@ export default function App() {
             <Route path="/switchboard" element={<Switchboard />} />
             <Route path="/admin" element={<AdminSettings />} />
             <Route path="/jsearch" element={<JSearchAnalytics />} />
+            <Route path="/company-finder" element={<CompanyFinderAnalytics />} />
             <Route
               path="*"
               element={

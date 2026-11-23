@@ -1,11 +1,12 @@
 """The host snapshot of app.db follows committed writes and is a self-contained file."""
 import sqlite3
 
+import pytest
 from sqlmodel import select
 
 from backend import snapshots
 from backend.config import get_settings
-from backend.db import Meta, init_db, new_session, set_meta
+from backend.db import Meta, init_db, is_postgres, new_session, set_meta
 
 
 def _read_meta(path, key):
@@ -18,6 +19,7 @@ def _read_meta(path, key):
     return (row[0] if row else None), mode
 
 
+@pytest.mark.skipif(is_postgres(), reason="the snapshot copies the SQLite file; none on Postgres")
 def test_commit_refreshes_snapshot():
     init_db()
     target = get_settings().snapshot_dir / snapshots.FILENAME

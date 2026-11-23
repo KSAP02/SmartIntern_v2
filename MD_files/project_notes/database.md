@@ -8,7 +8,7 @@ columns missing from existing tables (`_add_missing_columns`); renames, type cha
 NULL columns still need a deliberate migration). JSON column
 shapes come from `backend/schemas.py`. Any change to either goes here in the same change.
 
-_Last updated: 2026-11-17 (Phase 2 Job Search tables added)._
+_Last updated: 2026-11-23 (Postgres by `DATABASE_URL` with SQLite fallback; Supabase setup in §1)._
 
 ---
 
@@ -16,7 +16,8 @@ _Last updated: 2026-11-17 (Phase 2 Job Search tables added)._
 
 | Store | What it holds | Docker (standard) | Local run (no Docker) |
 | --- | --- | --- | --- |
-| **SQLite** `app.db` | All structured data: the tables below | `/app/data/app.db` in the `appdata` volume | `data_warehouse/appdata/app.db` |
+| **Postgres** (when `DATABASE_URL` is set, 2026-11-23) | All structured data: the same tables, same ids. Meant to be shared by the local and the deployed backend (Supabase) | the server in `DATABASE_URL` | same |
+| **SQLite** `app.db` (fallback: `DATABASE_URL` blank) | All structured data: the tables below | `/app/data/app.db` in the `appdata` volume | `data_warehouse/appdata/app.db` |
 | **Milvus Lite** `milvus.db` | Vectors only (no text): job digests (since Phase 2.6; memory-card and requirement-chunk collections were dropped) | `/app/data/milvus.db` in the `appdata` volume | `data_warehouse/appdata/milvus.db` |
 | **File storage** | The uploaded resume files (PDF / DOCX) | `/app/data/resumes/<sha256>.<ext>` in the volume | `data_warehouse/appdata/resumes/` |
 | **Snapshot** | Read-only copy of `app.db` for notebooks | `data_warehouse/snapshots/app.db` on the host | off unless `SNAPSHOT_DIR` is set |
@@ -27,6 +28,18 @@ _Last updated: 2026-11-17 (Phase 2 Job Search tables added)._
 - The DB runs in WAL mode, so `app.db-wal` / `app.db-shm` sit next to the live file. The
   snapshot is a single self-contained file (journal mode DELETE).
 - `data_warehouse/` is gitignored: real personal data never reaches git.
+- **Postgres (2026-11-23).** `db.postgres_url()` reads `DATABASE_URL` (`postgres://`,
+  `postgresql://` → psycopg driver); blank or `sqlite` = the SQLite file. Session time zone UTC,
+  no prepared statements (poolers work). On Postgres: no snapshot, no WAL, `_migrate_profiles`
+  only fills `profile_id`. A row saved with an id we choose (profile 1) must be followed by
+  `db.sync_id_counter(session, table)` (Postgres sequences don't move by themselves). Text
+  can't hold the NUL character (the copy strips it). **First copy:** `python -m
+  backend.services.db_copy` (SQLite → the Postgres in `DATABASE_URL`, same ids, sequences reset;
+  `--replace` wipes the target first). Tests always use SQLite (conftest), unless run on purpose
+  with `ALLOW_TEST_POSTGRES=1` against a throwaway database (its tables are dropped).
+- **Milvus Lite stays per machine** (user, 2026-11-23): with a shared Postgres each backend has
+  its own vectors. A job embedded on the other machine has no vector here, so re-scoring
+  (`rescore_relevance`) skips it and it keeps its score.
 
 ### Reading it from a notebook
 
@@ -40,6 +53,53 @@ con.close()   # on Windows an open handle blocks the next refresh
 The snapshot refreshes about 2 s (`[snapshot] debounce_seconds`) after any committed write
 to any table, and on every backend start. Edits to the copy are overwritten. Vectors are
 not in it; open `milvus.db` with `pymilvus.MilvusClient(path)` if needed.
+
+**On Postgres** there is no snapshot: read the database itself (read-only use only), e.g.
+`pd.read_sql("select * from employers", sqlalchemy.create_engine(url))` with the
+`DATABASE_URL` string, or Supabase → **Table Editor** / **SQL Editor**.
+
+### Setting up Postgres (Supabase, chosen 2026-11-23)
+
+**Why Supabase:** free plan with no compute-hour cap and a 500 MB database (ours: ~18 MB as
+SQLite on 2026-11-23). Neon's free plan scales to zero after 5 min idle and gives 100
+compute-hours a month; the 30-second timer and back-to-back finder runs keep a database awake,
+so those hours would run out. Supabase's catch: a free project **pauses after about a week
+without database activity** (restore it in the dashboard) and has **no automatic backups**.
+
+**Which backend does what** (all in `.env`; the code on `main` is the same everywhere):
+
+| `.env` key | Local backend | Deployed backend (Render) |
+| --- | --- | --- |
+| `DATABASE_URL` | the Supabase session pooler string | the same string |
+| `AUTO_SCANS` | `false` | `true` (automatic scans start only here) |
+| `COMPANY_FINDER` | `true` (the finder runs only here) | `false` |
+
+**Steps (once):**
+1. supabase.com → sign up → **New project**: name `smartintern`; a database password of
+   letters and digits only (`@ # / :` break the connection string); region **Southeast Asia
+   (Singapore)** (closest to India; pick Singapore for the Render backend too).
+2. In the project: **Connect** (top bar) → **Session pooler** → copy the URI
+   `postgresql://postgres.<ref>:[YOUR-PASSWORD]@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres`
+   and put the password in. Not "Direct connection": it is IPv6 only, which Docker on Windows
+   and Render don't have.
+3. `.env`: `DATABASE_URL=<that URI>` (never commit it).
+4. Copy the local data in (backend stopped, so the finder isn't writing):
+   ```
+   docker compose stop backend
+   docker compose run --rm --no-deps backend python -m backend.services.db_copy
+   docker compose up -d --force-recreate backend
+   ```
+   It prints each table with its row count, then "Done: N rows in M tables". It refuses a
+   database that already has rows; `--replace` wipes it first.
+5. Check: Admin → Switchboard → database = "Postgres at aws-0-…pooler.supabase.com:5432/postgres";
+   Supabase → Table Editor lists the tables.
+6. At deploy: Render's environment gets the same `DATABASE_URL`, `AUTO_SCANS=true`,
+   `COMPANY_FINDER=false`.
+
+**After the switch:** the local SQLite file stops changing (keep it as a backup; blank
+`DATABASE_URL` goes back to it, without what was added to Postgres meanwhile); local pages are a
+little slower (each query goes to Singapore); resume files are not in the database (file
+storage moves online later); Milvus Lite stays per machine.
 
 ---
 
@@ -189,8 +249,9 @@ Keys in use:
 | `criteria_version` | `job_search.CRITERIA_VERSION` | What Search criteria exclude changed: every job is re-checked on start (2026-11-20: v2 location no longer excludes, v3 stale reasons refreshed, v4 criteria never exclude) |
 | `apply_route_version` | `job_search.APPLY_ROUTE_VERSION` | The apply-route rules (`services/apply_route.py`) changed: every job's route is re-derived on start (Phase 2.7 A0) |
 | `seed_companies_version` | hash of `services/seed_companies.csv` | The company finder's seed list changed: missing seed companies are added to `company_leads` on start (Phase 2.7 E) |
-| `company_finder_state` | JSON `{running, trigger, started_at, finished_at, message, error, last_run}` | Scan Jobs → Company finder card (Phase 2.7 E) |
-| `crawl_index_state` | JSON `{collection, api, hosts: {pattern: {pages, next, done}}, leads, finished, checked_newer, last_error}` | Where the finder is in the Common Crawl index, so each run continues (Phase 2.7 E) |
+| `company_finder_state` | JSON `{running, trigger, run_id, started_at, finished_at, message, error, last_run}` | Admin settings → Company finder (Phase 2.7 E; on Scan Jobs until 2026-11-23). `finished_at` + `error` pace the automatic runs (`auto_tick`) |
+| `crawl_index_state` | JSON `{collection, size, hosts: {surt_prefix: {blocks: [[file, offset, length]], next, done}}, done_collections, recent, recent_date, leads, last_error}` | Where the finder is in the Common Crawl index files, so each run continues (Phase 2.7 E; index files instead of the CDX server since 2026-11-23; an old-format state is restarted) |
+| `yc_list_date` | `YYYY-MM-DD` | When the YC list of companies in India was last read (read at most weekly; 2026-11-23) |
 | `boards_roles_key` | hash of your roles' title words | Your roles changed: every quiet board (`employers.next_read_at`) is due again (Phase 2.7 E) |
 | `starter_companies_version` | hash of the starter list (`services/starter_companies.py`) | The system-managed company list changed: missing starter companies are added (switched on) on start; companies the system switched off stay off |
 | `phase26_dropped_collections` | ISO datetime | The unused `memory_cards` / `job_requirements` Milvus collections were dropped (once) |
@@ -383,7 +444,7 @@ for that link back). Feed jobs age out like JSearch jobs (not closed by absence)
 
 **`company_leads`** — **why it exists:** companies the finder may check, kept with the verdict so
 none is checked twice for nothing. Written by `services/company_finder.py` and
-`services/crawl_index.py`; shown on Scan Jobs → Company finder.
+`services/crawl_index.py`; shown on Admin settings → Company finder (run by hand).
 
 | Column | Type | Null | Meaning |
 | --- | --- | --- | --- |
@@ -391,8 +452,8 @@ none is checked twice for nothing. Written by `services/company_finder.py` and
 | `name` | TEXT | no | Company name (crawl leads: from the board id) |
 | `domain` | TEXT | yes | Website, e.g. razorpay.com (seed leads) |
 | `careers_url` | TEXT | yes | Careers page if known |
-| `origin` | TEXT, indexed | no | `seed` (seed list) \| `crawl` (Common Crawl index) |
-| `category` | TEXT | yes | Seed list: unicorn \| startup \| product \| global |
+| `origin` | TEXT, indexed | no | `seed` (seed list) \| `yc` (YC open-data list, companies based in India; 2026-11-23) \| `crawl` (Common Crawl index) |
+| `category` | TEXT | yes | Seed list: unicorn \| startup \| product \| global; YC leads: startup. Sets who is checked first (`company_finder.rank`) |
 | `kind`, `board` | TEXT, indexed | yes | The board once known (crawl leads arrive with it) |
 | `how` | TEXT | yes | How the board was found: careers_page \| guessed (name tried on each system) \| crawl |
 | `status` | TEXT, indexed | no | pending \| kept \| no_india_jobs \| no_board \| error |
@@ -402,6 +463,29 @@ none is checked twice for nothing. Written by `services/company_finder.py` and
 | `attempts` | INTEGER | no | Checks so far |
 | `added_at`, `checked_at` | DATETIME | no / yes | |
 | `next_check_at` | DATETIME, indexed | yes | Not due before (no India jobs: +30 days; no board: +90); None = due |
+| `run_id` | INTEGER, indexed | yes | The `finder_runs` row that last checked it (2026-11-23) |
+
+**`finder_runs`** (2026-11-23) — **why it exists:** the company finder runs by itself, one run
+after another while companies are waiting (`company_finder.auto_tick`, from the 30 s timer in
+`scheduler.py`); each run is recorded so Admin → **Company finder** (`/company-finder`, API
+`GET /api/scout/search/finder/dashboard`) can show what every run did. Counts are saved every 10
+companies, so a restart keeps them (`status = interrupted`). An idle look that found nothing to
+do leaves no row.
+
+| Column | Type | Null | Meaning |
+| --- | --- | --- | --- |
+| `id` | INTEGER PK | no | Run number |
+| `trigger` | TEXT | no | auto \| manual (Run now) |
+| `status` | TEXT, indexed | no | running \| done \| failed \| interrupted |
+| `started_at`, `finished_at` | DATETIME | no / yes | |
+| `message`, `error` | TEXT | yes | Progress / last words; the error of a failed run |
+| `new_leads` | JSON | no | Companies added to the waiting list: `{"seed", "yc", "crawl"}` |
+| `crawl` | JSON | no | `{collections: [crawls read], blocks, error?}` |
+| `planned` | INTEGER | no | Companies the run set out to check |
+| `counts` | JSON | no | `{checked, kept, no_india_jobs, no_board, error}` |
+| `by_kind`, `by_origin` | JSON | no | Per hiring system / per origin: `{checked, kept, india_jobs, matching_jobs}` (`none` = no board found) |
+| `india_jobs`, `matching_jobs` | INTEGER | no | On the boards it kept: jobs in India (or open to India), titles matching your roles |
+| `kept` | JSON | no | The companies it kept: `[{name, kind, origin, how, total_jobs, india_jobs, matching_jobs}]` |
 
 A kept lead becomes an `employers` row with `origin = "discovered"` (note "Found by the company
 finder through ..."), so the A3 rules apply to it (switched off when its India jobs go away).

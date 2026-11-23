@@ -66,6 +66,18 @@ class SourceHttp:
     def get_text(self, url: str, params: dict | None = None) -> str:
         return self._get(url, params).text
 
+    def get_bytes(self, url: str, headers: dict | None = None) -> bytes:
+        """Raw bytes (e.g. one byte range of a large file: headers={"Range": "bytes=a-b"})."""
+        return self._get(url, None, headers).content
+
+    def size(self, url: str) -> int:
+        """A file's size in bytes, from a one-byte range request ("Content-Range: bytes 0-0/<size>")."""
+        resp = self._get(url, None, {"Range": "bytes=0-0"})
+        total = (resp.headers.get("Content-Range") or "").rpartition("/")[2]
+        if not total.isdigit():
+            raise SourceError(f"{self.label}: the server didn't say how large the file is")
+        return int(total)
+
     def close(self) -> None:
         self._client.close()
 

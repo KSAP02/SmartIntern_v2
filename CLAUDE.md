@@ -22,12 +22,18 @@ seams that keep the project easy to change, everything in Docker. §1 describes 
 | 3–6 Scoring + agent selection / prepare applications / daily agent / controlled automation (apply) | later | `README.md` in the phase folder |
 | 7 Deploy | 🟡 partly: **deployed 2026-11-20** (frontend on Vercel, backend on Render; commit 859a7af). Still open: Postgres, S3 file storage, Milvus server / Zilliz, login (OAuth); persistence of SQLite / Milvus Lite / resume files on Render to confirm | `README.md` in the phase folder |
 
-Backend tests: 228 green (`docker compose run --rm --no-deps backend pytest backend/tests -q`).
+Backend tests: 240 green (`docker compose run --rm --no-deps backend pytest backend/tests -q`).
 Frontend: `cd frontend && npm run typecheck && npm run build`. Stack: `docker compose up --build -d`.
 Git: on `main`, pushed to `origin` (first commits 2026-11-20: initial, README, deploy prep, Desk About card).
 Commit / push only when the user asks.
 
 ### ▶ Next session: start here
+
+-1. **Database (2026-11-23):** Postgres by `.env` is built and verified on a throwaway
+   Postgres; the user still has to create the **Supabase** project and run the first copy
+   (steps in `MD_files/project_notes/database.md` §1 "Setting up Postgres"). Until then the
+   local app runs on SQLite (`DATABASE_URL` blank; local `.env` has `AUTO_SCANS=false`,
+   `COMPANY_FINDER=true`; Render will get the same URL, `AUTO_SCANS=true`, `COMPANY_FINDER=false`).
 
 0. **Phase 2.8 (multiple profiles)** — built 2026-11-23, user tests on localhost (no push until
    they say). `services/profiles.py`, meta `active_profile_id`; `memory_cards.profile_id`,
@@ -39,11 +45,25 @@ Commit / push only when the user asks.
    or push until they say so** (user, 2026-11-22: make search + filtering as good and efficient as
    possible before deploying). Then mark 2.7 ✅. **E:** the company finder
    (`services/company_finder.py`, `crawl_index.py`, table `company_leads`, seed list
-   `services/seed_companies.csv`, Scan Jobs → Company finder card, `[scout.search.finder]`) keeps
+   `services/seed_companies.csv`, **Admin settings → Company finder** (run by hand: moved from Scan Jobs and
+   `run_after_scan` off on 2026-11-23; automated later with the agent), `[scout.search.finder]`) keeps
    companies whose board has jobs in India; Keka / Darwinbox / Zoho Recruit boards (apply =
    needs you); quiet boards read weekly (`employers.next_read_at`); research in
-   `api_references/indian_ats.md`, `common_crawl.md`. Not verified live yet: careers-page reading,
-   name guessing, Common Crawl paging (the user's first Find companies run). The system manages the companies (no Companies page): 34 starter companies +
+   `api_references/indian_ats.md`, `common_crawl.md`. **2026-11-23:** Common Crawl read from the
+   index *files* on data.commoncrawl.org (the CDX server was all 504s): 12,353 boards live; YC
+   list (origin `yc`); startups / Indian systems checked first (`company_finder.rank`); a click
+   checks `board_checks_per_run` known boards (one worker per system) + `leads_per_run` searched;
+   scans read boards one worker per system too (`employers._read_boards`). Startup India list not
+   used (no documented API, few websites). **Runs by itself** while the backend runs
+   (`company_finder.auto_tick` from `scheduler.py`; back to back while companies are due, then
+   every 6 h; 500 known + 50 searched per run); every run is a `finder_runs` row; Admin →
+   **Company finder** page `/company-finder` (`GET .../finder/dashboard`). **Local only**
+   (user, 2026-11-23): the deployed backend sets env `COMPANY_FINDER=false` (no runs there) and
+   gets the companies through the database (Phase 7 plan in `project_build_phases/README.md`).
+   **Database by `.env` (2026-11-23):** `DATABASE_URL` = Postgres (Supabase, shared by local and
+   deployed), blank = SQLite; `AUTO_SCANS` (false locally, true on Render) and `COMPANY_FINDER`
+   (true locally, false on Render) say which backend does what. First copy: `python -m
+   backend.services.db_copy`. Milvus Lite stays per machine. The system manages the companies (no Companies page): 34 starter companies +
    companies **found automatically** from stored jobs' apply links (`employers.discover`, origin
    `discovered`, switched off when their board has no India jobs); dead boards switched off.
    Scan now → Sources, grouped: Job search (JSearch) / Company boards (Greenhouse, Lever, Ashby,
@@ -166,7 +186,8 @@ Keep this section updated as decisions are made.
   `/job-search/jobs` (Fits / Other relevant, job panel with evidence map), Search Settings
   `/job-search/settings` (Search criteria, **Search plan** dry run, Apply preset); System:
   Admin wing: Admin settings `/admin` (= config.toml), JSearch analytics `/jsearch` (budget,
-  provider usage, per-day requests and yield, searches, call log), Switchboard `/switchboard`
+  provider usage, per-day requests and yield, searches, call log), Company finder `/company-finder`
+  (every finder run and what it kept), Switchboard `/switchboard`
   (status). Later:
   Drafts, Outbox, Shifts, Pulse.
 - **Job sources (Phase 2.7):** JSearch + company boards + remote feeds (see "Next session" above). Before 2.7: **JSearch only** (since Phase 2.5; RapidAPI free tier, 200 requests/month,
@@ -175,8 +196,9 @@ Keep this section updated as decisions are made.
   Arbeitnow, Remote OK, Greenhouse, Lever, Ashby, Adzuna) are documented in
   `MD_files/api_references/former_sources.md`.
 - **Decisions made so far:**
-  - Backend: FastAPI (Python), SQLite via SQLModel (single file in the `appdata` Docker
-    volume; Postgres at deploy). Background work: FastAPI `BackgroundTasks`.
+  - Backend: FastAPI (Python), SQLModel on **Postgres when `DATABASE_URL` is set** (Supabase,
+    one database shared by the local and the deployed backend; 2026-11-23), otherwise SQLite
+    (single file in the `appdata` Docker volume). Background work: FastAPI `BackgroundTasks`.
   - Frontend: Vite + React + TypeScript + Tailwind v4 + React Router + lucide-react,
     served by `frontend/src/server.ts` (SPA fallback + `/api` proxy).
   - **Look: minimal, not generic.** Warm "paper & ink" neutrals + one accent (clay), serif
@@ -252,7 +274,10 @@ Keep this section updated as decisions are made.
     from Python on Windows: Git Bash heredocs turn `\\n` into real newlines; put scripts in a
     scratch file instead. A Milvus Lite collection reopens
     "released" after a restart and must be loaded (handled in `vectors.py`). SQLModel needs
-    timezone-aware datetimes (`db.utcnow()`).
+    timezone-aware datetimes (`db.utcnow()`). Code must work on SQLite *and* Postgres: no
+    `PRAGMA` / SQLite-only SQL outside a dialect check; after saving a row with a chosen id call
+    `db.sync_id_counter`; tests run on SQLite (conftest) and once in a while on a throwaway Postgres
+    (`ALLOW_TEST_POSTGRES=1 DATABASE_URL=...`).
 
 ---
 
@@ -266,7 +291,7 @@ Keep this section updated as decisions are made.
   the Dockerfile in the same change; remove it when it stops being used.
 - **Never read, print or commit `.env` values.** When a new setting is needed, add the
   key to `.env.example` (with a safe default or blank) in the same change.
-- **Keep `MD_files/database.md` current.** Any change to tables/columns in `backend/db.py`,
+- **Keep `MD_files/project_notes/database.md` current.** Any change to tables/columns in `backend/db.py`,
   to the JSON shapes in `backend/schemas.py` (`Profile`), to `meta` keys, or to where data
   is stored updates that file in the same change (schema, meaning, why the table exists).
 - **Don't commit or push unless asked.**
@@ -321,7 +346,9 @@ Keep this section updated as decisions are made.
 ├── data_warehouse/           # Datasets, seed data, exports (contents gitignored)
 ├── experiments/              # Notebooks, prototypes, throwaway scripts
 ├── MD_files/                 # Idea docs, design notes, generated artifacts
-│                             # database.md = tables, schemas, why each exists (keep current)
+│                             # project_notes/database.md = tables, schemas, why each exists (keep current)
+│                             # project_notes/job_sources_and_costs.md = how each source fetches, the
+│                             #   scan and company finder flows, and what each costs (keep current)
 ├── docker-compose.yml        # backend + frontend; add services only once they're real
 ├── requirements.txt          # Backend Python deps
 ├── .env / .env.example       # Root config for backend + frontend

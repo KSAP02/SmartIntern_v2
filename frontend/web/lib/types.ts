@@ -985,6 +985,62 @@ export interface ApiCallOut {
   scan_id: string | null;
 }
 
+/** One company-finder run (Admin → Company finder). */
+export interface FinderRunCounts {
+  checked: number;
+  kept: number;
+  india_jobs: number;
+  matching_jobs: number;
+}
+export interface FinderKeptCompany {
+  name: string;
+  kind: string | null;
+  origin: string;
+  how: string | null;
+  total_jobs: number | null;
+  india_jobs: number | null;
+  matching_jobs: number | null;
+}
+export interface FinderRunOut {
+  id: number;
+  trigger: string;
+  status: "running" | "done" | "failed" | "interrupted";
+  started_at: string;
+  finished_at: string | null;
+  duration_seconds: number | null;
+  message: string | null;
+  error: string | null;
+  new_leads: Record<string, number>;
+  crawl: { collections?: string[]; blocks?: number; error?: string };
+  planned: number;
+  counts: Record<string, number>;
+  by_kind: Record<string, FinderRunCounts>;
+  by_origin: Record<string, FinderRunCounts>;
+  india_jobs: number;
+  matching_jobs: number;
+  kept: FinderKeptCompany[];
+}
+export interface FinderBreakdownRow {
+  key: string;
+  label: string;
+  total: number;
+  pending: number;
+  kept: number;
+  no_india_jobs: number;
+  no_board: number;
+  error: number;
+  india_jobs: number;
+  matching_jobs: number;
+}
+export interface FinderDashboardOut {
+  status: FinderStatusOut;
+  runs: FinderRunOut[];
+  by_kind: FinderBreakdownRow[];
+  by_origin: FinderBreakdownRow[];
+  companies_read: number;
+  companies_read_by_kind: Record<string, number>;
+}
+
 /** Scan Jobs → Company finder (Phase 2.7 E). */
 export interface FinderLeadOut {
   name: string;
@@ -999,7 +1055,20 @@ export interface FinderLeadOut {
 
 export interface FinderStatusOut {
   enabled: boolean;
+  server_allows: boolean;
+  /** Runs by itself while the backend runs. */
+  auto: boolean;
   running: boolean;
+  /** The current (or last) run's id. */
+  run_id: number | null;
+  /** Companies whose check is due now. */
+  due_now: number;
+  /** Companies whose board has to be searched for, per run. */
+  leads_per_run: number;
+  /** Companies whose board is known, per run. */
+  board_checks_per_run: number;
+  /** Companies not checked yet, by origin (seed / yc / crawl). */
+  pending_by_origin: Record<string, number>;
   trigger: string | null;
   message: string | null;
   error: string | null;
@@ -1008,7 +1077,13 @@ export interface FinderStatusOut {
   last_run: Record<string, number>;
   by_status: Record<string, number>;
   by_origin: Record<string, number>;
-  crawl: { collection: string | null; hosts: { host: string; pages: number | null; done: number; finished: boolean }[]; leads: number } | null;
+  crawl: {
+    collection: string | null;
+    hosts: { host: string; pages: number | null; done: number; finished: boolean }[];
+    leads: number;
+    collections_done: string[];
+    last_error: string | null;
+  } | null;
   kept: FinderLeadOut[];
 }
 

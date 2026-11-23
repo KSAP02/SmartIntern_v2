@@ -3,7 +3,7 @@
 > **Status:** done (2026-11-17). Built, tested (23 backend tests) and verified live in
 > Docker with `gpt-6-luna` + OpenAI embeddings and the user's real resume.
 > Original detailed plan: `MD_files/initial_draft_plan.md` §1. Data reference:
-> `MD_files/database.md`.
+> `MD_files/project_notes/database.md`.
 
 ---
 

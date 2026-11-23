@@ -6,7 +6,7 @@
   job when it is in India or remote and open to India (unknown kept), AND its title matches one
   of your roles or their search titles (word match after abbreviation expansion, no
   embeddings). Search criteria still never remove a job; this is the source's scope.
-- **Scan step** (`collect`): every enabled company, one after another with a polite delay; free,
+- **Scan step** (`collect`): every due company; one worker per board system, each one request at a time with a polite delay (2026-11-23); free,
   so no request budget, but each board fetch is logged in `api_calls` (api = the ATS) like a
   JSearch request, so "Requests and what they found" and the per-source table cover it.
 - A board lists only open postings: a stored job its board no longer lists is marked expired.
@@ -17,9 +17,13 @@
 from __future__ import annotations
 
 import logging
+import queue
 import re
 import time
-from datetime import timedelta
+from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 
 from sqlmodel import Session, select
 
@@ -374,8 +378,65 @@ def _close_missing(session: Session, kind: str, board: str, live_ids: set[str]) 
     return closed
 
 
+@dataclass
+class _Read:
+    """One board read by a worker; stored by the scan's own thread."""
+
+    employer_id: int
+    at: datetime
+    jobs: list = field(default_factory=list)
+    kept: list = field(default_factory=list)
+    out_scope: int = 0
+    out_title: int = 0
+    detailed: list = field(default_factory=list)
+    error: SourceError | None = None
+
+
+def _read_boards(companies: list[Employer], phrases, cfg: BoardsSettings) -> Iterator[_Read]:
+    """Read the companies' boards, one worker per board system (each system still gets one request
+    at a time, with the delay), and yield each read as it finishes. Only network work happens in the
+    workers; the caller stores everything in its own session."""
+    groups: dict[str, list[tuple[int, str, str]]] = {}
+    for e in companies:
+        groups.setdefault(e.kind, []).append((int(e.id), e.board, e.name))
+    done: queue.Queue = queue.Queue()
+
+    def work(kind: str, items: list[tuple[int, str, str]]) -> None:
+        a = BOARDS[kind]
+        try:
+            with SourceHttp(timeout=cfg.timeout_seconds, max_retries=1) as http:
+                for i, (eid, board, name) in enumerate(items):
+                    if i and cfg.delay_seconds:
+                        time.sleep(cfg.delay_seconds)
+                    r = _Read(employer_id=eid, at=utcnow())
+                    try:
+                        r.jobs = a.list_jobs(http, board, name)
+                        r.kept, r.out_scope, r.out_title = precheck(r.jobs, phrases)
+                        r.detailed = [a.complete(http, board, n) if k < cfg.max_details_per_board else n
+                                      for k, n in enumerate(r.kept)]
+                    except SourceError as err:
+                        r.error = err
+                    except Exception as err:  # noqa: BLE001 - an odd answer fails this board, not the scan
+                        r.error = SourceError(f"{a.label}: {type(err).__name__}: {err}")
+                    done.put(r)
+        finally:
+            done.put(None)  # this worker is finished
+
+    with ThreadPoolExecutor(max_workers=max(1, len(groups)), thread_name_prefix="boards") as pool:
+        for kind, items in groups.items():
+            pool.submit(work, kind, items)
+        left = len(groups)
+        while left:
+            r = done.get()
+            if r is None:
+                left -= 1
+            else:
+                yield r
+
+
 def collect(scan_id: str, totals: dict[str, int], selection=None) -> list[int]:
-    """① for company boards: every enabled company, pre-checked, stored. Returns api_calls ids."""
+    """① for company boards: every due company, pre-checked, stored. Returns api_calls ids. Boards
+    are read one worker per board system (2026-11-23), stored here one at a time."""
     from backend.services.job_search import ingest, record_call_jobs
 
     cfg = settings()
@@ -393,56 +454,50 @@ def collect(scan_id: str, totals: dict[str, int], selection=None) -> list[int]:
             return []
         phrases = role_phrases(s)
         lim = search_settings.get(s, "limits")
-        with SourceHttp(timeout=cfg.timeout_seconds, max_retries=1) as http:
-            for i, e in enumerate(companies):
-                if i and cfg.delay_seconds:
-                    time.sleep(cfg.delay_seconds)
-                a = BOARDS[e.kind]
-                call = ApiCall(api=e.kind, purpose="scan", scan_id=scan_id,
-                               params={"query": f"{e.name} · {a.label} board", "board": e.board, "company": e.name})
-                s.add(call)
-                s.commit()
-                s.refresh(call)
-                call_ids.append(int(call.id))
-                e.last_checked_at = utcnow()
-                try:
-                    jobs = a.list_jobs(http, e.board, e.name)
-                    kept, out_scope, out_title = precheck(jobs, phrases)
-                    detailed = []
-                    for k, n in enumerate(kept):
-                        detailed.append(a.complete(http, e.board, n) if k < cfg.max_details_per_board else n)
-                except SourceError as err:
-                    call.status, call.error = "error", str(err)[:300]
-                    e.last_error = call.error
-                    if "HTTP 404" in call.error or "not found" in call.error.lower():
-                        e.enabled = False  # the board is gone (or the id was wrong): the system stops reading it
-                    s.add(call)
-                    s.add(e)
-                    s.commit()
-                    totals["board_errors"] = totals.get("board_errors", 0) + 1
-                    continue
-                returned, new = [], 0
-                for n in detailed:
-                    result = ingest(s, n, call.id, 0, lim.repost_window_days)  # a board lists only open jobs: no age limit
-                    returned.append((n, result))
-                    totals[result] = totals.get(result, 0) + 1
-                    new += result == "new"
-                closed = _close_missing(s, e.kind, e.board, {n.source_job_id for n in jobs})
-                s.commit()
-                record_call_jobs(s, call.id, returned)
-                call.status, call.http_status, call.results, call.new_jobs = "ok", 200, len(jobs), new
-                call.skipped_scope, call.skipped_title = out_scope, out_title
-                e.last_error, e.last_found, e.last_in_scope, e.last_kept = None, len(jobs), len(jobs) - out_scope, len(kept)
-                _judge_discovered(e, len(jobs) - out_scope, cfg)
-                # Read schedule: a board with nothing matching your roles is read again in a week.
-                e.next_read_at = (utcnow() + timedelta(days=cfg.quiet_board_days)
-                                  if not kept and cfg.quiet_board_days > 0 else None)
-                if not e.enabled:
-                    totals["companies_dropped"] = totals.get("companies_dropped", 0) + 1
+        by_id = {e.id: e for e in companies}
+        for read in _read_boards(companies, phrases, cfg):
+            e = by_id[read.employer_id]
+            a = BOARDS[e.kind]
+            call = ApiCall(api=e.kind, purpose="scan", scan_id=scan_id,
+                           params={"query": f"{e.name} · {a.label} board", "board": e.board, "company": e.name})
+            s.add(call)
+            s.commit()
+            s.refresh(call)
+            call_ids.append(int(call.id))
+            e.last_checked_at = read.at
+            if read.error is not None:
+                call.status, call.error = "error", str(read.error)[:300]
+                e.last_error = call.error
+                if "HTTP 404" in call.error or "not found" in call.error.lower():
+                    e.enabled = False  # the board is gone (or the id was wrong): the system stops reading it
                 s.add(call)
                 s.add(e)
                 s.commit()
-                totals["fetched"] = totals.get("fetched", 0) + len(detailed)
-                totals["board_requests"] = totals.get("board_requests", 0) + 1
-                totals["closed"] = totals.get("closed", 0) + closed
+                totals["board_errors"] = totals.get("board_errors", 0) + 1
+                continue
+            jobs, kept, out_scope, out_title, detailed = read.jobs, read.kept, read.out_scope, read.out_title, read.detailed
+            returned, new = [], 0
+            for n in detailed:
+                result = ingest(s, n, call.id, 0, lim.repost_window_days)  # a board lists only open jobs: no age limit
+                returned.append((n, result))
+                totals[result] = totals.get(result, 0) + 1
+                new += result == "new"
+            closed = _close_missing(s, e.kind, e.board, {n.source_job_id for n in jobs})
+            s.commit()
+            record_call_jobs(s, call.id, returned)
+            call.status, call.http_status, call.results, call.new_jobs = "ok", 200, len(jobs), new
+            call.skipped_scope, call.skipped_title = out_scope, out_title
+            e.last_error, e.last_found, e.last_in_scope, e.last_kept = None, len(jobs), len(jobs) - out_scope, len(kept)
+            _judge_discovered(e, len(jobs) - out_scope, cfg)
+            # Read schedule: a board with nothing matching your roles is read again in a week.
+            e.next_read_at = (utcnow() + timedelta(days=cfg.quiet_board_days)
+                              if not kept and cfg.quiet_board_days > 0 else None)
+            if not e.enabled:
+                totals["companies_dropped"] = totals.get("companies_dropped", 0) + 1
+            s.add(call)
+            s.add(e)
+            s.commit()
+            totals["fetched"] = totals.get("fetched", 0) + len(detailed)
+            totals["board_requests"] = totals.get("board_requests", 0) + 1
+            totals["closed"] = totals.get("closed", 0) + closed
     return call_ids

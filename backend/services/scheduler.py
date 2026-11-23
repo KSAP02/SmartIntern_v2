@@ -1,7 +1,8 @@
 """In-process timer (no extra service), every 30 s:
 - picks up hand edits of settings/config.toml (re-embed / re-map if matching or models changed);
 - starts a scheduled scan when one is due (System -> Admin settings -> Schedule; toggle on the
-  Job Search Overview)."""
+  Job Search Overview), only where AUTO_SCANS is true (.env; one backend per shared database);
+- starts the next company-finder run while companies are waiting (`company_finder.auto_tick`)."""
 from __future__ import annotations
 
 import logging
@@ -15,7 +16,11 @@ _started = threading.Event()
 
 
 def _tick() -> None:
+    from backend.config import get_settings
+
     settings_effects.sync_config()
+    if not get_settings().auto_scans:
+        return
     with new_session() as s:
         due = job_views.next_scan_at(s)
     if due is not None and due <= utcnow() and job_search.running_scan_id() is None:
@@ -27,11 +32,17 @@ def _tick() -> None:
 
 
 def _loop(stop: threading.Event) -> None:
+    from backend.services import company_finder
+
     while not stop.wait(30):
         try:
             _tick()
         except Exception as e:  # noqa: BLE001 - the timer must keep running
             log.warning("auto-scan check failed: %s", e)
+        try:
+            company_finder.auto_tick()
+        except Exception as e:  # noqa: BLE001
+            log.warning("company finder check failed: %s", e)
 
 
 def start(stop: threading.Event) -> None:

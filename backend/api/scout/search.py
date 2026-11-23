@@ -32,6 +32,7 @@ from backend.job_schemas import (
     ScanSelection,
     ScanOut,
     ScanRequestsOut,
+    FinderDashboardOut,
     FinderStatusOut,
     ScheduleSettings,
     SearchPlanOut,
@@ -261,11 +262,21 @@ def finder_status(session: Session = Depends(get_session)):
     return company_finder.status(session)
 
 
+@router.get("/finder/dashboard", response_model=FinderDashboardOut)
+def finder_dashboard(limit: int = 100, session: Session = Depends(get_session)):
+    """Admin -> Company finder analytics: every run, and all companies by hiring system and origin."""
+    from backend.services import company_finder
+
+    return company_finder.dashboard(session, max(1, min(limit, 500)))
+
+
 @router.post("/finder/run", response_model=FinderStatusOut, status_code=202)
 def finder_run(session: Session = Depends(get_session)):
     """Start a company-finder run in the background (free: public pages and boards only)."""
     from backend.services import company_finder
 
+    if not company_finder.server_allows():
+        raise HTTPException(400, "The company finder doesn't run on this server (COMPANY_FINDER=false); it runs on your local app.")
     if not company_finder.settings().enabled:
         raise HTTPException(400, "The company finder is switched off ([scout.search.finder] enabled = false).")
     if not company_finder.start("manual"):

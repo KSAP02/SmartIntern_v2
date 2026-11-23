@@ -390,14 +390,21 @@ class FinderSettings(BaseModel):
 
     enabled: bool = True
     run_after_scan: bool = True
-    leads_per_run: int = Field(default=40, ge=1, le=1000)
+    auto: bool = True  # run by itself while the backend runs (2026-11-23)
+    pause_between_runs_seconds: int = Field(default=30, ge=0)
+    idle_check_hours: float = Field(default=6.0, gt=0)
+    error_backoff_minutes: float = Field(default=15.0, ge=0)
+    leads_per_run: int = Field(default=50, ge=1, le=1000)  # companies whose board must be searched for
+    board_checks_per_run: int = Field(default=500, ge=0, le=5000)  # companies whose board is known
+    yc_list: bool = True
     delay_seconds: float = Field(default=1.0, ge=0)
     timeout_seconds: float = Field(default=15.0, gt=0)
     recheck_after_days: int = Field(default=30, ge=1)
     no_board_recheck_days: int = Field(default=90, ge=1)
     crawl: bool = True
-    crawl_delay_seconds: float = Field(default=5.0, ge=1)
-    crawl_pages_per_run: int = Field(default=4, ge=0, le=200)
+    crawl_delay_seconds: float = Field(default=0.5, ge=0)
+    crawl_pages_per_run: int = Field(default=60, ge=0, le=500)  # index blocks (3,000 addresses each)
+    crawl_collections: int = Field(default=3, ge=1, le=24)  # newest monthly crawls read
 
 
 class FinderLeadOut(BaseModel):
@@ -416,14 +423,22 @@ class FinderLeadOut(BaseModel):
 class CrawlProgressOut(BaseModel):
     collection: str | None  # the Common Crawl index read, e.g. CC-MAIN-2026-40
     hosts: list[dict] = Field(default_factory=list)  # [{host, pages, done}]
-    leads: int = 0  # board addresses found in it so far
+    leads: int = 0  # board addresses found so far (all crawls)
+    collections_done: list[str] = Field(default_factory=list)  # crawls read completely
+    last_error: str | None = None  # why the last run stopped early (it carries on next run)
 
 
 class FinderStatusOut(BaseModel):
-    """Scan Jobs -> Company finder (Phase 2.7 E)."""
+    """Admin settings -> Company finder (Phase 2.7 E)."""
 
     enabled: bool
+    server_allows: bool = True  # False where COMPANY_FINDER=false (the deployed backend)
+    auto: bool = True  # runs by itself while the backend runs
     running: bool
+    run_id: int | None = None  # the finder_runs row of the current / last run
+    due_now: int = 0  # companies whose check is due now
+    leads_per_run: int = 40  # companies one run searches a board for
+    board_checks_per_run: int = 300  # companies with a known board one run checks
     trigger: str | None = None
     message: str | None = None
     error: str | None = None
@@ -431,9 +446,58 @@ class FinderStatusOut(BaseModel):
     finished_at: str | None = None
     last_run: dict[str, int] = Field(default_factory=dict)
     by_status: dict[str, int] = Field(default_factory=dict)  # pending / kept / no_india_jobs / no_board / error
-    by_origin: dict[str, int] = Field(default_factory=dict)  # seed / crawl
+    by_origin: dict[str, int] = Field(default_factory=dict)  # seed / yc / crawl
+    pending_by_origin: dict[str, int] = Field(default_factory=dict)  # not checked yet, per origin
     crawl: CrawlProgressOut | None = None
     kept: list[FinderLeadOut] = Field(default_factory=list)
+
+
+class FinderRunOut(BaseModel):
+    """One company-finder run (table `finder_runs`)."""
+
+    id: int
+    trigger: str  # auto | manual
+    status: str  # running | done | failed | interrupted
+    started_at: datetime
+    finished_at: datetime | None
+    duration_seconds: float | None
+    message: str | None
+    error: str | None
+    new_leads: dict[str, int] = Field(default_factory=dict)  # seed / yc / crawl
+    crawl: dict = Field(default_factory=dict)  # {collections, blocks, error}
+    planned: int = 0
+    counts: dict[str, int] = Field(default_factory=dict)  # checked / kept / no_india_jobs / no_board / error
+    by_kind: dict[str, dict[str, int]] = Field(default_factory=dict)
+    by_origin: dict[str, dict[str, int]] = Field(default_factory=dict)
+    india_jobs: int = 0
+    matching_jobs: int = 0
+    kept: list[dict] = Field(default_factory=list)
+
+
+class FinderBreakdownRow(BaseModel):
+    """All companies ever on the waiting list, grouped (by hiring system or by where they came from)."""
+
+    key: str
+    label: str
+    total: int = 0
+    pending: int = 0
+    kept: int = 0
+    no_india_jobs: int = 0
+    no_board: int = 0
+    error: int = 0
+    india_jobs: int = 0  # on the kept boards, when checked
+    matching_jobs: int = 0
+
+
+class FinderDashboardOut(BaseModel):
+    """Admin -> Company finder analytics."""
+
+    status: FinderStatusOut
+    runs: list[FinderRunOut] = Field(default_factory=list)  # newest first
+    by_kind: list[FinderBreakdownRow] = Field(default_factory=list)
+    by_origin: list[FinderBreakdownRow] = Field(default_factory=list)
+    companies_read: int = 0  # companies every scan reads (employers switched on)
+    companies_read_by_kind: dict[str, int] = Field(default_factory=dict)
 
 
 class FeedsSettings(BaseModel):

@@ -20,6 +20,7 @@ import type {
 import { timeAgo, useResource } from "../lib/util";
 import { Badge, Button, ErrorBanner, Input, PageHeader, Segmented, Skeleton, Toggle } from "../components/ui";
 import { useToast } from "../components/Toast";
+import { CompanyFinder } from "../components/jobs/CompanyFinder";
 import { ChipInput } from "../components/ChipInput";
 import { Field, MoreOptions, NumInput, Section, SectionNav, Select, SwitchRow, same } from "../components/settings/form";
 
@@ -614,7 +615,7 @@ export default function AdminSettings() {
 
       {draft && saved && (
         <div className="grid gap-8 lg:grid-cols-[9.5rem_minmax(0,1fr)]">
-          <SectionNav sections={SECTIONS} dirty={(id) => changed.some((c) => c.id === id)} />
+          <SectionNav sections={[...SECTIONS, { id: "finder", label: "Company finder" }]} dirty={(id) => changed.some((c) => c.id === id)} />
 
           <div className="min-w-0 space-y-6">
             <Section id="models" title="Models" description="Which AI models the app calls, and how. API keys stay in .env." dirty={!same(saved.settings.models, draft.models)}>
@@ -641,6 +642,14 @@ export default function AdminSettings() {
             <Section id="limits" title="Limits & retention" description="Jobs stay until you discard them (or the agent applies). Only discarded jobs are deleted." dirty={!same(saved.settings.limits, draft.limits)}>
               {sectionError("limits")}
               <LimitsFields v={draft.limits} set={(v) => set("limits", v)} />
+            </Section>
+
+            <Section
+              id="finder"
+              title="Company finder"
+              description="Adds companies whose job boards have jobs in India (or remote jobs open to India) to the companies every scan reads. Runs by itself while the app runs; every run is on Admin → Company finder."
+            >
+              <CompanyFinder embedded />
             </Section>
 
             <p className="text-[11px] text-zinc-400">

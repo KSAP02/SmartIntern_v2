@@ -1,6 +1,9 @@
-"""SQLite engine, session and tables (single user). Postgres replaces SQLite at deploy."""
+"""Database engine, session and tables (single user). Postgres when DATABASE_URL is set in .env,
+otherwise the SQLite file <data_dir>/app.db (2026-11-23)."""
 from __future__ import annotations
 
+import os
+import sys
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from functools import lru_cache
@@ -9,7 +12,7 @@ from sqlalchemy import JSON, Column, Text, UniqueConstraint, event, inspect, tex
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
 from backend import snapshots
-from backend.config import data_dir
+from backend.config import data_dir, get_settings
 
 
 def utcnow() -> datetime:
@@ -233,7 +236,7 @@ class CompanyLead(SQLModel, table=True):
     name: str
     domain: str | None = None  # the company's website, e.g. razorpay.com (seed leads)
     careers_url: str | None = None
-    origin: str = Field(default="seed", index=True)  # seed | crawl
+    origin: str = Field(default="seed", index=True)  # seed | yc | crawl
     category: str | None = None  # seed list: unicorn | startup | product | global
     # The board, once known (crawl leads arrive with it; seed leads get it from the finder).
     kind: str | None = Field(default=None, index=True)
@@ -250,6 +253,37 @@ class CompanyLead(SQLModel, table=True):
     added_at: datetime = Field(default_factory=utcnow)
     checked_at: datetime | None = None
     next_check_at: datetime | None = Field(default=None, index=True)  # None = due now
+    run_id: int | None = Field(default=None, index=True)  # the finder run that last checked it
+
+
+class FinderRun(SQLModel, table=True):
+    """One company-finder run (2026-11-23): what it added to the waiting list and what its checks
+    found, for Admin -> Company finder analytics. Runs back to back by themselves while companies
+    are waiting (`company_finder.auto_tick`); counts are saved as the run goes, so a restart
+    keeps them (the run is marked interrupted)."""
+
+    __tablename__ = "finder_runs"
+
+    id: int | None = Field(default=None, primary_key=True)
+    trigger: str = "auto"  # auto | manual
+    status: str = Field(default="running", index=True)  # running | done | failed | interrupted
+    started_at: datetime = Field(default_factory=utcnow, index=True)
+    finished_at: datetime | None = None
+    message: str | None = None
+    error: str | None = None
+    # New companies put on the waiting list this run: {"seed": n, "yc": n, "crawl": n}
+    new_leads: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    crawl: dict = Field(default_factory=dict, sa_column=Column(JSON))  # {collection, blocks}
+    planned: int = 0  # companies this run set out to check
+    # {checked, kept, no_india_jobs, no_board, error}
+    counts: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    # Per hiring system / per origin: {key: {checked, kept, india_jobs, matching_jobs}}
+    by_kind: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    by_origin: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    india_jobs: int = 0  # jobs in India (or remote open to India) on the boards it kept
+    matching_jobs: int = 0  # of those, titles matching your roles
+    # The companies it kept: [{name, kind, origin, how, total_jobs, india_jobs, matching_jobs}]
+    kept: list = Field(default_factory=list, sa_column=Column(JSON))
 
 
 class ApiCall(SQLModel, table=True):
@@ -426,8 +460,38 @@ class JobRequirement(SQLModel, table=True):
     evidence: list = Field(default_factory=list, sa_column=Column(JSON))  # [{card_id, score}]
 
 
+def postgres_url() -> str | None:
+    """The Postgres URL from DATABASE_URL (as a SQLAlchemy psycopg URL), or None = use SQLite."""
+    url = (get_settings().database_url or "").strip()
+    if url.lower() in ("", "sqlite"):
+        return None
+    for prefix in ("postgresql+psycopg://", "postgresql://", "postgres://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url[len(prefix):]
+    raise RuntimeError("DATABASE_URL must start with postgresql:// (or be blank for SQLite).")
+
+
+def is_postgres() -> bool:
+    return postgres_url() is not None
+
+
+def postgres_engine(url: str):
+    """Times in UTC (stored without a zone, like SQLite; the code reads them as UTC). No prepared
+    statements, so poolers in transaction mode (Supabase port 6543) work too."""
+    return create_engine(
+        url, pool_pre_ping=True, pool_recycle=300, pool_size=5, max_overflow=15, pool_timeout=60,
+        connect_args={"options": "-c timezone=UTC", "prepare_threshold": None},
+    )
+
+
 @lru_cache
 def get_engine():
+    url = postgres_url()
+    if url is not None:
+        # Tests must never touch a real database (conftest pins SQLite unless asked otherwise).
+        if "pytest" in sys.modules and os.environ.get("ALLOW_TEST_POSTGRES") != "1":
+            raise RuntimeError("Tests use SQLite; DATABASE_URL points at Postgres.")
+        return postgres_engine(url)
     path = data_dir() / "app.db"
     engine = create_engine(f"sqlite:///{path}", connect_args={"check_same_thread": False, "timeout": 30})
 
@@ -481,6 +545,8 @@ def _migrate_profiles(engine) -> None:
     with engine.begin() as conn:
         conn.execute(text("UPDATE memory_cards SET profile_id = 1 WHERE profile_id IS NULL"))
         conn.execute(text("UPDATE role_contexts SET profile_id = 1 WHERE profile_id IS NULL"))
+        if engine.dialect.name != "sqlite":
+            return  # Postgres tables are made from the current models (unique per profile already)
         unique = {r[1]: r[2] for r in conn.execute(text("PRAGMA index_list('role_contexts')"))}
         if unique.get("ix_role_contexts_role_key") == 1:
             conn.execute(text("DROP INDEX ix_role_contexts_role_key"))
@@ -494,7 +560,8 @@ def init_db() -> None:
     _add_missing_columns(get_engine())
     _migrate_profiles(get_engine())
     # Refresh the snapshot on every start, so it matches the live DB even after a restore.
-    snapshots.schedule(data_dir() / "app.db")
+    if not is_postgres():
+        snapshots.schedule(data_dir() / "app.db")
 
 
 def get_session() -> Iterator[Session]:
@@ -540,8 +607,19 @@ def get_profile_row(session: Session) -> ProfileRow:
         row = ProfileRow(id=pid, name="My profile", data={}, field_origins={}, created_at=utcnow())
         session.add(row)
         session.commit()
+        sync_id_counter(session, ProfileRow.__tablename__)
         session.refresh(row)
     return row
+
+
+def sync_id_counter(session: Session, table: str) -> None:
+    """After a row was saved with an id of our choosing: Postgres keeps counting from its own
+    sequence, so move it past the largest id (SQLite needs nothing)."""
+    if session.get_bind().dialect.name != "postgresql":
+        return
+    session.execute(text(f"SELECT setval(pg_get_serial_sequence('\"{table}\"', 'id'), "
+                         f"COALESCE((SELECT MAX(id) FROM \"{table}\"), 0) + 1, false)"))
+    session.commit()
 
 
 def _default_profile(_mapper, connection, target) -> None:
@@ -558,4 +636,7 @@ event.listen(RoleContext, "before_insert", _default_profile)
 def db_check() -> str:
     with new_session() as s:
         s.exec(select(Meta).limit(1)).all()
+    if is_postgres():
+        u = get_engine().url
+        return f"Postgres at {u.host}:{u.port or 5432}/{u.database}"
     return f"SQLite at {data_dir() / 'app.db'}"

@@ -21,6 +21,7 @@ import type {
   JSearchTestOut,
   ProviderUsageOut,
   ApiCallOut,
+  FinderDashboardOut,
   FinderStatusOut,
   ScanRequestsOut,
   QueryOut,
@@ -203,6 +204,7 @@ export const api = {
   listApiCalls: (limit = 50) => request<ApiCallOut[]>("GET", `/scout/search/calls?limit=${limit}`),
   finderStatus: () => request<FinderStatusOut>("GET", "/scout/search/finder"),
   runFinder: () => request<FinderStatusOut>("POST", "/scout/search/finder/run"),
+  finderDashboard: (limit = 100) => request<FinderDashboardOut>("GET", `/scout/search/finder/dashboard?limit=${limit}`),
   scanRequests: (limit = 10) => request<ScanRequestsOut[]>("GET", `/scout/search/scan-requests?limit=${limit}`),
 
   // Scout / Compass

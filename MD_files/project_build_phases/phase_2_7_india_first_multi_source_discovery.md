@@ -353,7 +353,9 @@ seed companies, Common Crawl included.
   re-checked after 30 days (no board: 90). Background thread; one request at a time with a delay;
   stores no jobs (the next scan does). Scan Jobs → **Company finder** card: status, counts,
   web-index progress, companies kept, **Find companies**. Starts after every scan
-  (`run_after_scan`). Config `[scout.search.finder]`. API `GET /api/scout/search/finder`,
+  (`run_after_scan`; **changed 2026-11-23:** the card moved to Admin settings and
+  `run_after_scan` is off: the user runs it by hand until the agent automates it). Config
+  `[scout.search.finder]`. API `GET /api/scout/search/finder`,
   `POST .../finder/run`.
 - **Fetch efficiency:** boards with no job matching your roles are read weekly, not every scan
   (`employers.next_read_at`, `quiet_board_days` 7; all due again when your roles change; Scan now
@@ -369,3 +371,47 @@ seed companies, Common Crawl included.
 - **Not verified live:** the finder's careers-page reading and name guessing against real sites,
   and the Common Crawl paging (its server answered 504 during research). The user's first
   **Find companies** run is the check.
+
+### E2: more companies, startups first (2026-11-23)
+
+User: "we don't just want the big companies or unicorns; also startups and recently founded
+companies... we need a way to add companies from the internet." Built in order:
+
+1. **Common Crawl fixed.** Its CDX query server answered every query with HTTP 504 (even one-URL
+   lookups), so `crawl_index.py` now reads the index **files** on data.commoncrawl.org (S3):
+   binary search of `cluster.idx` by byte range, then the matching `cdx-*.gz` blocks. Live:
+   **12,353 company boards** from CC-MAIN-2026-43 in ~3 min (whole crawl in one click); the newest
+   3 monthly crawls are read, newest first (`crawl_collections`). Indian systems first.
+2. **Faster checks.** A click checks up to `board_checks_per_run` (300) companies whose board is
+   known (one worker per hiring system, one request at a time each) alongside `leads_per_run`
+   (40) whose board must be searched for. Live test: 35 checked in 1.5 min → 26 kept (Indian Keka
+   startups). Scans also read boards one worker per system (`employers._read_boards`; storing
+   stays in the scan's thread).
+3. **Startups first:** `company_finder.rank`: seed startups / product, YC and Keka / Darwinbox /
+   Zoho Recruit companies → unicorns → other web-index companies → global.
+4. **YC list:** active Y Combinator companies based in India from the free YC open-data list
+   (yc-oss.github.io/api, rebuilt daily from YC's public directory), read weekly; origin `yc`.
+   Live: 140 new leads. **Startup India** (DPIIT) list not used: no documented API, most entries
+   have no website.
+
+`employers` stays the one table every scan reads (starter + discovered from apply links every
+scan + kept by the finder every click); `company_leads` is the waiting list. Tests
+`test_finder_e.py` (12). Backend 232 green.
+
+### E3: the finder runs by itself, with analytics (2026-11-23)
+
+User: "automate that task per run and have a dashboard ... runs while the backend is running,
+keep the progress intact ... a new run is triggered as soon as one ends ... you decide how many
+companies per run." Built:
+- `company_finder.auto_tick` (from the 30 s timer in `scheduler.py`): next run 30 s after the last
+  ends while companies are due or a crawl is half read; otherwise a look every 6 h; never during a
+  scan; 15 min after a failure. Config `auto`, `pause_between_runs_seconds`, `idle_check_hours`,
+  `error_backoff_minutes`. Run size: 500 known boards + 50 searched + 60 index blocks (~5–10 min).
+- Table `finder_runs` (counts, per system, per origin, companies kept, what it added, crawl
+  blocks), saved every 10 companies; a restart marks the run interrupted and keeps its counts
+  (verified live: run 1 interrupted at 200 checked / 115 kept, run 2 started by itself).
+- Admin → **Company finder** page (`/company-finder`, `GET .../finder/dashboard`): status +
+  progress, tiles, stacked bar per run, runs table (expand: companies kept, systems), breakdown by
+  hiring system and by origin. Admin settings section: status + Run now + link.
+- Web-index names cleaned ("content-whale-in.in" → "Content Whale"; old names fixed on start).
+- Tests: `test_finder_e.py` (15). Backend 235 green.

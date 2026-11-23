@@ -54,6 +54,16 @@ class Settings(BaseSettings):
     # Blank -> no CORS (the Node server / Vite proxy make the browser same-origin). Comma-separated
     # origins when the frontend calls the backend directly, e.g. https://smartintern.vercel.app
     cors_origins: str = ""
+    # The company finder runs only where this is true (user, 2026-11-23: it runs on localhost;
+    # the deployed backend sets COMPANY_FINDER=false and only reads the companies it found).
+    company_finder: bool = True
+    # Automatic scans (Search criteria -> automatic scans) start only where this is true, so two
+    # backends sharing one database never scan at the same time (user, 2026-11-23: scans run on
+    # the deployed backend; the local one sets AUTO_SCANS=false). Scan now works everywhere.
+    auto_scans: bool = True
+    # Postgres connection string (postgresql://user:password@host:port/db). Blank or "sqlite" ->
+    # the SQLite file <data_dir>/app.db (the fallback; tests always use it).
+    database_url: str = ""
 
 
 # ── Tuning (settings/config.toml) ──────────────────────────────────────────────

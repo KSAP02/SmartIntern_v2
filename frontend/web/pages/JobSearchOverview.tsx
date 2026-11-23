@@ -11,7 +11,6 @@ import { PHASE_LABEL, clockTime, dateTime, plural, valueLabel } from "../compone
 import { QuotaMeter } from "../components/jobs/SearchPlan";
 import { ScanPicker } from "../components/jobs/ScanPicker";
 import { RequestResults } from "../components/jobs/RequestResults";
-import { CompanyFinder } from "../components/jobs/CompanyFinder";
 import { JobDetailPanel } from "../components/jobs/JobDetailPanel";
 
 const FUNNEL: { key: string; label: string }[] = [
@@ -490,7 +489,6 @@ export default function JobSearchOverview() {
           <PerDayChart data={data.per_day} labels={labels} />
           <Breakdown breakdown={data.breakdown} />
           <SourcesHealth data={data} />
-          <CompanyFinder />
           <RequestResults scans={calls.data} error={calls.error} onRetry={calls.reload} onOpenJob={setOpenJob} />
 
           {(data.funnel.relevant ?? 0) > 0 && (

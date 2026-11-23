@@ -7,6 +7,11 @@ import tempfile
 import pytest
 
 os.environ["DATA_DIR"] = tempfile.mkdtemp(prefix="smartintern-test-")
+# Tests use a throwaway SQLite file, never the Postgres in .env. To run them against a throwaway
+# Postgres on purpose: ALLOW_TEST_POSTGRES=1 DATABASE_URL=postgresql://... (its tables are dropped).
+if os.environ.get("ALLOW_TEST_POSTGRES") != "1":
+    os.environ["DATABASE_URL"] = "sqlite"
+os.environ["AUTO_SCANS"] = "true"
 os.environ["LLM_API_KEY"] = "sk-test-not-real"
 os.environ["VECTOR_DB_URI"] = os.path.join(os.environ["DATA_DIR"], "milvus-test.db")
 # Never let tests overwrite the real snapshot (Compose mounts data_warehouse/snapshots).
@@ -29,6 +34,13 @@ with open(_cfg, "w", encoding="utf-8") as _f:
     _f.write(_text)
 
 from backend.schemas import Profile  # noqa: E402
+
+if os.environ.get("ALLOW_TEST_POSTGRES") == "1":
+    from sqlmodel import SQLModel  # noqa: E402
+
+    from backend import db as _db  # noqa: E402
+
+    SQLModel.metadata.drop_all(_db.get_engine())
 
 FAKE_RESUME_LINES = [
     "Alex Example",
