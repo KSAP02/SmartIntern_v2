@@ -29,11 +29,18 @@ Commit / push only when the user asks.
 
 ### ▶ Next session: start here
 
--1. **Database (2026-11-23):** Postgres by `.env` is built and verified on a throwaway
-   Postgres; the user still has to create the **Supabase** project and run the first copy
-   (steps in `MD_files/project_notes/database.md` §1 "Setting up Postgres"). Until then the
-   local app runs on SQLite (`DATABASE_URL` blank; local `.env` has `AUTO_SCANS=false`,
-   `COMPANY_FINDER=true`; Render will get the same URL, `AUTO_SCANS=true`, `COMPANY_FINDER=false`).
+-1. **CHECKPOINT (2026-11-23): resume here — Supabase setup.** Postgres by `.env` is built,
+   verified on a throwaway Postgres and pushed (85ce9a5). Done: Render has `COMPANY_FINDER=false`
+   (user, 2026-11-23); local `.env` has `DATABASE_URL=` (blank → SQLite), `AUTO_SCANS=false`,
+   `COMPANY_FINDER=true`. **Next:**
+   1. User: create the Supabase project (Singapore, letters+digits password), copy the
+      **Session pooler** URI, put it in local `.env` as `DATABASE_URL` (never pasted in chat,
+      never read by Claude). Steps: `MD_files/project_notes/database.md` §1 "Setting up Postgres".
+   2. Claude: `docker compose stop backend` → `docker compose run --rm --no-deps backend python
+      -m backend.services.db_copy` (show row counts) → `docker compose up -d --force-recreate
+      backend` → check Switchboard says "Postgres at …supabase.com" and Jobs / Company finder
+      pages read the data.
+   3. User: Render → Environment → same `DATABASE_URL` (`AUTO_SCANS` unset = true there).
 
 0. **Phase 2.8 (multiple profiles)** — built 2026-11-23, user tests on localhost (no push until
    they say). `services/profiles.py`, meta `active_profile_id`; `memory_cards.profile_id`,
